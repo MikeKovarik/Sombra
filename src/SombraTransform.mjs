@@ -1,9 +1,6 @@
 import {Transform, bufferFrom, bufferToString} from './node-builtins.mjs'
 
 
-// each class has to have two basic methods:
-// encode (accepts buffer, applies transformation, returns buffer)
-// decode (accepts buffer, reverts transformation, returns buffer)
 export class SombraTransform extends Transform {
 
 	// Shared constructor for update()/digest() and transform stream.
@@ -21,6 +18,15 @@ export class SombraTransform extends Transform {
 		this._encodedChunks = []
 		if (this._init)
 			this._init(...args)
+	}
+
+	static convertToString(data, ...args) {
+		var instance = new this(...args)
+		return instance.update(data).digest(this.defaultEncoding || 'utf8')
+	}
+	static convert(data, ...args) {
+		var instance = new this(...args)
+		return instance.update(data).digest()
 	}
 
 	// TODO: Get rid of this mess, make it create instance and rely on update/digest
@@ -68,6 +74,7 @@ export class SombraTransform extends Transform {
 		var returned = this._update(chunk, ...this.args)
 		if (returned)
 			this._encodedChunks.push(returned)
+		return this
 	}
 
 	// Calculates the digest of all of the data passed to be hashed (using the .update() method).
@@ -130,7 +137,7 @@ export class SombraTransform extends Transform {
 			return value
 		})
 	}
-
+/*
 	// TODO: Figure out how to do Decoder streams
 	static decode(buffer) {
 		if (this.args)
@@ -138,7 +145,7 @@ export class SombraTransform extends Transform {
 		else
 			return this.prototype._decode(buffer)
 	}
-
+*/
 
 	// HELPER FUNCTIONS
 
@@ -154,17 +161,12 @@ export class SombraTransform extends Transform {
 	//static toString(buffer, encoding) {
 	//	return toString(this.encode(buffer), encoding)
 	//}
-
-	static convert(string) {
-		var buffer = bufferFrom(string)
-		return this.encode(buffer)
-	}
-
+/*
 	static decodeString(string) {
 		return this.decode(bufferFrom(string))
 	}
 	static encodeString(string) {
 		return this.encode(bufferFrom(string))
 	}
-
+*/
 }

@@ -57,3 +57,28 @@ export function chain(input, actions, returnBuffer = false, defaultAction = 'enc
 	return state
 }
 */
+
+/*
+// Characters usually take one or two bytes, but emoji and other special unicode characters
+// take up to 4 bytes and two characters making it impossible to just iterate over string.
+// This function takes string (of one emoji but realistically multiple characters) and returns charCode.
+function unicodeCharCode(str) {
+	// Strp unicode variation selector and zero-width joiner
+	//str = str.replace(/\ufe0f|\u200d/gm, '')
+	var i = 0
+	var code = 0
+	var lastChunk = 0
+	while (i < str.length) {
+		code = str.charCodeAt(i++)
+		if (lastChunk) {
+			return 65536 + (lastChunk - 55296 << 10) + (code - 56320)
+		} else if (55296 <= code && code <= 56319) {
+			lastChunk = code
+		} else {
+			return code
+		}
+	}
+}
+
+console.log(unicodeCharCode('💀').toString(16))
+*/

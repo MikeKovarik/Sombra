@@ -187,6 +187,31 @@ export function chain(input, actions, returnBuffer = false, defaultAction = 'enc
 }
 */
 
+/*
+// Characters usually take one or two bytes, but emoji and other special unicode characters
+// take up to 4 bytes and two characters making it impossible to just iterate over string.
+// This function takes string (of one emoji but realistically multiple characters) and returns charCode.
+function unicodeCharCode(str) {
+	// Strp unicode variation selector and zero-width joiner
+	//str = str.replace(/\ufe0f|\u200d/gm, '')
+	var i = 0
+	var code = 0
+	var lastChunk = 0
+	while (i < str.length) {
+		code = str.charCodeAt(i++)
+		if (lastChunk) {
+			return 65536 + (lastChunk - 55296 << 10) + (code - 56320)
+		} else if (55296 <= code && code <= 56319) {
+			lastChunk = code
+		} else {
+			return code
+		}
+	}
+}
+
+console.log(unicodeCharCode('💀').toString(16))
+*/
+
 var util = Object.freeze({
 	nodeCrypto: nodeCrypto,
 	webCrypto: webCrypto,
@@ -221,6 +246,15 @@ class SombraTransform extends Transform {
 		this._rawChunks = [];
 		this._encodedChunks = [];
 		if (this._init) this._init(...args);
+	}
+
+	static convertToString(data, ...args) {
+		var instance = new this(...args);
+		return instance.update(data).digest(this.defaultEncoding || 'utf8');
+	}
+	static convert(data, ...args) {
+		var instance = new this(...args);
+		return instance.update(data).digest();
 	}
 
 	// TODO: Get rid of this mess, make it create instance and rely on update/digest
@@ -260,6 +294,7 @@ class SombraTransform extends Transform {
 		// TODO: how to pass the value?
 		var returned = this._update(chunk, ...this.args);
 		if (returned) this._encodedChunks.push(returned);
+		return this;
 	}
 
 	// Calculates the digest of all of the data passed to be hashed (using the .update() method).
@@ -313,11 +348,15 @@ class SombraTransform extends Transform {
 			return value;
 		});
 	}
-
-	// TODO: Figure out how to do Decoder streams
-	static decode(buffer) {
-		if (this.args) return this.prototype._decode(buffer, ...this.args.map(o => o.default));else return this.prototype._decode(buffer);
-	}
+	/*
+ 	// TODO: Figure out how to do Decoder streams
+ 	static decode(buffer) {
+ 		if (this.args)
+ 			return this.prototype._decode(buffer, ...this.args.map(o => o.default))
+ 		else
+ 			return this.prototype._decode(buffer)
+ 	}
+ */
 
 	// HELPER FUNCTIONS
 
@@ -345,19 +384,14 @@ class SombraTransform extends Transform {
 	//static toString(buffer, encoding) {
 	//	return toString(this.encode(buffer), encoding)
 	//}
-
-	static convert(string) {
-		var buffer = bufferFrom(string);
-		return this.encode(buffer);
-	}
-
-	static decodeString(string) {
-		return this.decode(bufferFrom(string));
-	}
-	static encodeString(string) {
-		return this.encode(bufferFrom(string));
-	}
-
+	/*
+ 	static decodeString(string) {
+ 		return this.decode(bufferFrom(string))
+ 	}
+ 	static encodeString(string) {
+ 		return this.encode(bufferFrom(string))
+ 	}
+ */
 }
 
 class Utf8$1 extends SombraTransform {}
@@ -548,110 +582,235 @@ Num.args = [{
 	default: 2
 }];
 
+// Table of commonly known named entities
+var entities = {
+	' ': 'nbsp',
+	"'": 'apos',
+	'<': 'lt',
+	'>': 'gt',
+	'&': 'amp',
+	'"': 'quot',
+	'¢': 'cent',
+	'£': 'pound',
+	'¥': 'yen',
+	'€': 'euro',
+	'©': 'copy',
+	'®': 'reg'
+};
+
+var entityChars = ' \'<>&"¢£¥€©®';
+var entityCodes = [
+// ' \'<>&"¢£¥€©®'
+'nbsp', 'apos', 'lt', 'gt', 'amp', 'quot', 'cent', 'pound', 'yen', 'euro', 'copy', 'reg'];
+
+function isHexCharacter(character) {
+	return (/[0-9A-Fa-f]/.test(character)
+	);
+}
+
+// Methods for detecting, encoding and decoding special unicode characters that take more than 2 bytes (1 character)
+// and need to be represented by two separate utf characters.
+function isFirstHalfOfSpecialUnicodeChar(charCode) {
+	return charCode > 55296 && charCode <= 56319;
+}
+function isSpecialUnicodeChar(charCode) {
+	return charCode > 65536;
+}
+function mergeUnicodeCharacters(leftCode, rightCode) {
+	return 65536 + (leftCode - 55296 << 10) + (rightCode - 56320);
+}
+function splitUnicodeCharacters(charCode) {
+	charCode -= 65536;
+	var leftCode = (charCode >>> 10) + 55296;
+	var rightCode = (charCode & 0x3FF) + 56320;
+	return [leftCode, rightCode];
+}
+
 // TODO: decode
 // TODO: make decoder streamable (through _update and _digest), because the chunks might be split
 //       right in the middle of entity - &#x at the end of one, the hex value at the beginning of second chunk.
-class EntityEncoding extends SombraTransform {
+class EntityEncoder extends SombraTransform {
 
 	_encode(buffer) {
+		var { prefix, postfix, radix, uppercase, zeroPadded } = this.constructor;
 		var input = bufferToString(buffer);
+		// Encoded output string
 		var output = '';
+		// Code of the currently read character
+		var charCode;
+		// Characters usually take one or two bytes, but emoji and other special unicode characters
+		// take up to 4 bytes and two characters making it impossible to simply iterate over string.
+		// If charcode is greater than 55296 it means it's split into two characters and we need to
+		// keep track of both characters to get the emoji's actual charcode.
+		var prevCode;
 		for (var i = 0; i < input.length; i++) {
-			output += this._encodeCharacter(input.charCodeAt(i));
+			charCode = input.charCodeAt(i);
+			if (prevCode) {
+				// We found second part (second character) of the special character.
+				// Calculate real charcode.
+				charCode = mergeUnicodeCharacters(prevCode, charCode);
+				prevCode = 0;
+			} else if (isFirstHalfOfSpecialUnicodeChar(charCode)) {
+				// We found first part of two-character special character. Keep first half's charcode and skip iteration.
+				prevCode = charCode;
+				continue;
+			}
+			// Encode the character and add it to the output string.
+			output += this._encodeCharacter(charCode, prefix, postfix, radix, uppercase, zeroPadded);
 		}
 		return bufferFrom(output);
 	}
 
-	_decode(buffer) {
-		// TODO: 
-		// - search for the beginning of prefix
-		// - select the whole entity
-		//   - Unicode is always 4 hex characters long
-		//   - UnicodeEscaped doesnt have postfix, length is variable. it's nearly impossible to detect end properly.
-		//    Probably should be looking for any non-hex character.
-		//   - other encoders end with ;
-		// - strip the entity, turn back into character, decode into utf8 hex value
-		// - slice preceding text and add among other chunks
-		// - add decoded character (from entity) into chunks
-		// - look for next entity in text and repeat
-		/*
-  // not actually working, dry coded idea of what decoder should look like
-  var chunks = []
-  var input = bufferToString(buffer)
-  var prefixIndex
-  while (prefixIndex = input.indexOf(this.constructor.prefix)) {
-  	var beforeEntity = input.slice(0, prefixIndex)
-  	chunks.push(bufferFrom(beforeEntity))
-  	var entityEndIndex = ???? //TODO
-  	var entity = input.slice(prefixIndex, entityEndIndex)
-  	var char = this._decodeEntity(entity)
-  	chunks.push(bufferFrom(char))
-  	input = input.slice(entityEndIndex)
-  }
-  return Buffer.concat(chunks)
-  */
+	_encodeCharacter(char, prefix, postfix, radix, uppercase, zeroPadded) {
+		var stringCode = char.toString(radix);
+		if (uppercase) stringCode = stringCode.toUpperCase();
+		if (zeroPadded) stringCode = stringCode.padStart(zeroPadded, '0');
+		return `${prefix || ''}${stringCode}${postfix || ''}`;
 	}
-	_decodeEntity(entity) {
-		return String.fromCharCode(parseInt(this._parseEntity(entity)));
+
+}
+
+class EntityDecoder extends SombraTransform {
+
+	_encode(buffer) {
+		var { prefix, postfix, radix } = this.constructor;
+
+		var chunks = [];
+		var input = bufferToString(buffer);
+		var remainder = input;
+		var prefixIndex;
+		var killswitch = 5;
+		while ((prefixIndex = remainder.indexOf(prefix)) !== -1) {
+			if (prefixIndex > 0) {
+				var before = remainder.slice(0, prefixIndex);
+				chunks.push(before);
+			}
+			var entityEndIndex = remainder.length;
+			if (postfix) {
+				entityEndIndex = remainder.indexOf(postfix) + postfix.length;
+			} else {
+				var i = prefixIndex + prefix.length;
+				while (i < remainder.length) {
+					if (!isHexCharacter(remainder[i])) {
+						entityEndIndex = i;
+						break;
+					}
+					i++;
+				}
+			}
+			var entity = remainder.slice(prefixIndex, entityEndIndex);
+			var decoded = this._decodeEntity(entity, prefix, postfix, radix); // todo
+			chunks.push(decoded);
+			remainder = remainder.slice(entityEndIndex);
+			if (killswitch-- === 0) return;
+		}
+		var output = chunks.join('');
+		return bufferFrom(output);
+	}
+
+	_decodeEntity(entity, prefix, postfix, radix) {
+		var { prefix, postfix, radix } = this.constructor;
+		if (postfix) var parsed = entity.slice(prefix.length, -postfix.length);else var parsed = entity.slice(prefix.length);
+		var charCode = parseInt(parsed, radix);
+		// Check if the charcode is single character or special unicode (usually emoji) that takes two
+		// characters (4 bytes). And stringify the charcode properly if so.
+		if (isSpecialUnicodeChar(charCode)) return String.fromCharCode(...splitUnicodeCharacters(charCode));else return String.fromCharCode(charCode);
 	}
 
 }
 
 // TODO: decode
 // Encodes every character into notation
-class NcrDec extends EntityEncoding {
-	_encodeCharacter(char) {
-		return `&#${char};`;
-	}
-	_parseEntity(entity) {
-		return entity.slice(2, -1);
-	}
-}
+class NcrDec extends EntityEncoder {}
+NcrDec.prefix = '&#';
+NcrDec.postfix = ';';
+NcrDec.radix = 10;
+class NcrDecDecoder extends EntityDecoder {}
 
 // TODO: decode
 // Encodes every character into notation
-NcrDec.prefix = '';
-class NcrHex extends EntityEncoding {
-	_encodeCharacter(char) {
-		return `&#x${char.toString(16)};`;
-	}
-	_parseEntity(entity) {
-		return entity.slice(3, -1);
-	}
-}
+NcrDecDecoder.prefix = '&#';
+NcrDecDecoder.postfix = ';';
+NcrDecDecoder.radix = 10;
+class NcrHex extends EntityEncoder {}
+NcrHex.prefix = '&#x';
+NcrHex.postfix = ';';
+NcrHex.radix = 16;
+class NcrHexDecoder extends EntityDecoder {}
 
 // TODO: decode
 // Encodes every character into notation
-NcrHex.prefix = '';
-class UnicodeEscaped extends EntityEncoding {
-	_encodeCharacter(char) {
-		return `\\u${char.toString(16)}`;
-	}
-	_parseEntity(entity) {
-		return entity.slice(2);
-	}
-}
+NcrHexDecoder.prefix = '&#x';
+NcrHexDecoder.postfix = ';';
+NcrHexDecoder.radix = 16;
+class UnicodeEscaped extends EntityEncoder {}
+UnicodeEscaped.prefix = '\\u';
+UnicodeEscaped.radix = 16;
+class UnicodeEscapedDecoder extends EntityDecoder {}
 
 // TODO: decode
 // Encodes every character into notation
-UnicodeEscaped.prefix = '';
-class Unicode extends EntityEncoding {
-	_encodeCharacter(char) {
-		return `U+${char.toString(16).toUpperCase().padStart(4, '0')}`;
-	}
-	_parseEntity(entity) {
-		return entity.slice(2);
-	}
-}
+UnicodeEscapedDecoder.prefix = '\\u';
+UnicodeEscapedDecoder.radix = 16;
+class Unicode extends EntityEncoder {}
+Unicode.prefix = 'U+';
+Unicode.postfix = '';
+Unicode.radix = 16;
+Unicode.uppercase = true;
+Unicode.zeroPadded = 4;
+class UnicodeDecoder extends EntityDecoder {}
 
 // TODO:
 // </div> => %3C%2Fdiv%3E
-Unicode.prefix = '';
-class Percent extends EntityEncoding {}
+UnicodeDecoder.prefix = 'U+';
+UnicodeDecoder.postfix = '';
+UnicodeDecoder.radix = 16;
+class Percent extends EntityEncoder {}
 
-// TODO:
 // </div> => &lt;/div&gt;
-class HtmlEscaper extends EntityEncoding {}
+class HtmlEscaper extends EntityEncoder {
+	_encode(buffer) {
+		var input = bufferToString(buffer);
+		var output = '';
+		var char;
+		for (var i = 0; i < input.length; i++) {
+			char = input[i];
+			output += entities[char] ? `&${entities[char]};` : char;
+		}
+		return bufferFrom(output);
+	}
+}
+// </div> => &lt;/div&gt;
+class HtmlUnescaper extends EntityDecoder {
+	_decodeEntity(string) {
+		var index = entityCodes.indexOf(string.slice(1, -1));
+		return entityChars[index];
+	}
+}
+
+HtmlUnescaper.prefix = '&';
+HtmlUnescaper.postfix = ';';
+function createShortcut(Encoder, Decoder) {
+	if (Encoder) {
+		var fn = Encoder.convert.bind(Encoder);
+		fn.Encoder = Encoder;
+		fn.encode = Encoder.convert.bind(Encoder);
+	} else {
+		var fn = {};
+	}
+	if (Decoder) {
+		fn.Decoder = Decoder;
+		fn.decode = Decoder.convert.bind(Decoder);
+	}
+	return fn;
+}
+
+var ncrdec = createShortcut(NcrDec, NcrDecDecoder);
+//export var ncrdec = createShortcut(undefined, NcrDecDecoder)
+var ncrhex = createShortcut(NcrHex, NcrHexDecoder);
+var unicodeescaped = createShortcut(UnicodeEscaped, UnicodeEscapedDecoder);
+var unicode = createShortcut(Unicode, UnicodeDecoder);
+var html = createShortcut(HtmlEscaper, HtmlUnescaper);
 
 function getEncodingConstructor(encoding) {
 	switch (encoding) {
@@ -712,13 +871,24 @@ var _encodings = Object.freeze({
 	Dec: Dec,
 	Hex: Hex,
 	Num: Num,
-	EntityEncoding: EntityEncoding,
+	EntityEncoder: EntityEncoder,
+	EntityDecoder: EntityDecoder,
 	NcrDec: NcrDec,
+	NcrDecDecoder: NcrDecDecoder,
 	NcrHex: NcrHex,
+	NcrHexDecoder: NcrHexDecoder,
 	UnicodeEscaped: UnicodeEscaped,
+	UnicodeEscapedDecoder: UnicodeEscapedDecoder,
 	Unicode: Unicode,
+	UnicodeDecoder: UnicodeDecoder,
 	Percent: Percent,
-	HtmlEscaper: HtmlEscaper
+	HtmlEscaper: HtmlEscaper,
+	HtmlUnescaper: HtmlUnescaper,
+	ncrdec: ncrdec,
+	ncrhex: ncrhex,
+	unicodeescaped: unicodeescaped,
+	unicode: unicode,
+	html: html
 });
 
 function bitReversal(x, n) {
@@ -1413,13 +1583,24 @@ var _default$1 = Object.freeze({
 	Dec: Dec,
 	Hex: Hex,
 	Num: Num,
-	EntityEncoding: EntityEncoding,
+	EntityEncoder: EntityEncoder,
+	EntityDecoder: EntityDecoder,
 	NcrDec: NcrDec,
+	NcrDecDecoder: NcrDecDecoder,
 	NcrHex: NcrHex,
+	NcrHexDecoder: NcrHexDecoder,
 	UnicodeEscaped: UnicodeEscaped,
+	UnicodeEscapedDecoder: UnicodeEscapedDecoder,
 	Unicode: Unicode,
+	UnicodeDecoder: UnicodeDecoder,
 	Percent: Percent,
 	HtmlEscaper: HtmlEscaper,
+	HtmlUnescaper: HtmlUnescaper,
+	ncrdec: ncrdec,
+	ncrhex: ncrhex,
+	unicodeescaped: unicodeescaped,
+	unicode: unicode,
+	html: html,
 	Sum: Sum,
 	Xor: Xor,
 	TwosComplement: TwosComplement,
@@ -1470,13 +1651,24 @@ exports.Oct = Oct;
 exports.Dec = Dec;
 exports.Hex = Hex;
 exports.Num = Num;
-exports.EntityEncoding = EntityEncoding;
+exports.EntityEncoder = EntityEncoder;
+exports.EntityDecoder = EntityDecoder;
 exports.NcrDec = NcrDec;
+exports.NcrDecDecoder = NcrDecDecoder;
 exports.NcrHex = NcrHex;
+exports.NcrHexDecoder = NcrHexDecoder;
 exports.UnicodeEscaped = UnicodeEscaped;
+exports.UnicodeEscapedDecoder = UnicodeEscapedDecoder;
 exports.Unicode = Unicode;
+exports.UnicodeDecoder = UnicodeDecoder;
 exports.Percent = Percent;
 exports.HtmlEscaper = HtmlEscaper;
+exports.HtmlUnescaper = HtmlUnescaper;
+exports.ncrdec = ncrdec;
+exports.ncrhex = ncrhex;
+exports.unicodeescaped = unicodeescaped;
+exports.unicode = unicode;
+exports.html = html;
 exports.Sum = Sum;
 exports.Xor = Xor;
 exports.TwosComplement = TwosComplement;

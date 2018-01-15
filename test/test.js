@@ -30,10 +30,125 @@ var fixtures = {
 	3: bufferFrom('a'),
 	4: bufferFrom('hello'),
 	5: bufferFrom('Avocados are useless.'),
-	6: bufferFrom('☢'),
-	7: bufferFrom('cdF0§)ú.g9-ř;°á´$*6☢'),
+	6: bufferFrom('💀'),
+	7: bufferFrom('cdF0§)ú.g9-ř;°á´$*6💀'),
+	8: bufferFrom('</div>'),
 }
 
+
+
+var asyncPromise = (timeout = 0) => new Promise(resolve => setTimeout(resolve, timeout))
+
+function createReadStream() {
+	var inputStream = new stream.Readable
+	inputStream._read = () => {}
+	return inputStream
+}
+
+function createFullSuite(name, ...suiteArgs) {
+	if (typeof suiteArgs[suiteArgs.length - 1] === 'function')
+		var customTests = suiteArgs.pop()
+	var results = suiteArgs.pop()
+	var args = suiteArgs.pop()
+
+	describe(name, () => {
+		var compound = sombra[name]
+		if (compound.Encoder)
+			createSuite(compound.Encoder, args, results, 'encode')
+		if (compound.Decoder)
+			createSuite(compound.Decoder, args, results, 'decode')
+		if (customTests)
+			customTests()
+	})
+}
+
+function createSuite(Class, args = [], results, mode = 'encode') {
+	if (results === undefined) {
+		results = args
+		args = []
+	}
+
+	var forEach
+
+	if (Array.isArray(results)) {
+		for (var i in results) {
+			var pair = results[i]
+			results[i] = [bufferFrom(pair[0]), bufferFrom(pair[1])]
+		}
+		forEach = runTest => {
+			return async () => {
+				for (var pair of results) {
+					if (mode === 'encode')
+						var [from, to] = pair
+					else
+						var [to, from] = pair
+					await runTest(from, to)
+				}
+			}
+		}
+	} else {
+		for (var i in results)
+			if (typeof results[i] === 'string')
+				results[i] = bufferFrom(results[i], 'hex')
+		forEach = runTest => {
+			return async () => {
+				for (var i in results) {
+					if (mode === 'encode') {
+						var from = fixtures[i]
+						var to = results[i]
+					} else {
+						var to = fixtures[i]
+						var from = results[i]
+					}
+					await runTest(from, to)
+				}
+			}
+		}
+	}
+
+	var subName = ` (${JSON.stringify(args).slice(1, -1)})`
+	var argList = JSON.stringify(args).slice(1, -1)
+
+	it(`.${mode}(${argList})`, forEach(async (from, to) => {
+		assert.deepEqual(await Class.convert(from, ...args), to)
+	}))
+/*
+	it(`(new (${argList})).update() & .digest()` + subName, forEach(async (from, to) => {
+		var testedStream = new Class(...args)
+		var remainder = from
+		while (remainder.length) {
+			testedStream.update(remainder.slice(0, 5))
+			remainder = remainder.slice(5)
+		}
+		assert.deepEqual(testedStream.digest(), to)
+	}))
+
+	it(`(new (${argList})).pipe() stream` + subName, forEach(async (from, to) => {
+		var testedStream = new Class(...args)
+		var inputStream = createReadStream()
+		var remainder = from
+		while (remainder.length) {
+			await asyncPromise(5)
+			inputStream.push(remainder.slice(0, 5))
+			remainder = remainder.slice(5)
+		}
+		inputStream.push(null)
+		inputStream.pipe(testedStream)
+		assert.deepEqual(await promisifyStream(testedStream), to)
+	}))
+*/
+}
+
+
+
+
+
+
+
+
+
+
+/*
 function createSuite(Class, args = [], items) {
 	if (items === undefined) {
 		items = args
@@ -59,7 +174,6 @@ function createSuite(Class, args = [], items) {
 	it('.encode()' + subName, forEach(async (from, to) => {
 		assert.deepEqual(await Class.encode(from, ...args), to)
 	}))
-
 
 	if (items[4]) {
 		it('.update() & .digest() simple' + subName, async () => {
@@ -89,7 +203,7 @@ function createSuite(Class, args = [], items) {
 			setTimeout(() => {
 				inputStream.push('hello')
 				inputStream.push(null)
-			}, 20)
+			}, 5)
 			inputStream.pipe(testedStream)
 			assert.deepEqual(await promisifyStream(testedStream), items[4])
 		})
@@ -104,12 +218,12 @@ function createSuite(Class, args = [], items) {
 			inputStream.push(Buffer.from(' '))
 			setTimeout(() => {
 				inputStream.push('are ')
-			}, 20)
+			}, 5)
 			setTimeout(() => {
 				inputStream.push(Buffer.from('use'))
 				inputStream.push('less.')
 				inputStream.push(null)
-			}, 40)
+			}, 10)
 			inputStream.pipe(testedStream)
 			assert.deepEqual(await promisifyStream(testedStream), items[5])
 		})
@@ -119,7 +233,7 @@ function createSuite(Class, args = [], items) {
 }
 
 
-
+*/
 
 
 
@@ -339,8 +453,8 @@ describe('Encodings', () => {
 			3: bufferFrom('YQ=='),
 			4: bufferFrom('aGVsbG8='),
 			5: bufferFrom('QXZvY2Fkb3MgYXJlIHVzZWxlc3Mu'),
-			6: bufferFrom('4pii'),
-			7: bufferFrom('Y2RGMMKnKcO6Lmc5LcWZO8Kww6HCtCQqNuKYog=='),
+			6: bufferFrom('8J+SgA=='),
+			7: bufferFrom('Y2RGMMKnKcO6Lmc5LcWZO8Kww6HCtCQqNvCfkoA='),
 		})
 	})
 
@@ -355,13 +469,13 @@ describe('Encodings', () => {
 				1: bufferFrom('00000000'),
 				2: bufferFrom('11111111'),
 				4: bufferFrom('0110100001100101011011000110110001101111'),
-				6: bufferFrom('111000101001100010100010'),
+				6: bufferFrom('11110000100111111001001010000000'),
 			})
 			// Not zero padded, no matter the separator.
 			createSuite(sombra.Bin, [' '], {
 				1: bufferFrom('00000000'),
 				4: bufferFrom('01101000 01100101 01101100 01101100 01101111'),
-				6: bufferFrom('11100010 10011000 10100010'),
+				6: bufferFrom('11110000 10011111 10010010 10000000'),
 			})
 			createSuite(sombra.Bin, ['-'], {
 				4: bufferFrom('01101000-01100101-01101100-01101100-01101111'),
@@ -385,8 +499,8 @@ describe('Encodings', () => {
 				3: bufferFrom('61'),
 				4: bufferFrom('68656c6c6f'),
 				5: bufferFrom('41766f6361646f7320617265207573656c6573732e'),
-				6: bufferFrom('e298a2'),
-				7: bufferFrom('63644630c2a729c3ba2e67392dc5993bc2b0c3a1c2b4242a36e298a2'),
+				6: bufferFrom('f09f9280'),
+				7: bufferFrom('63644630c2a729c3ba2e67392dc5993bc2b0c3a1c2b4242a36f09f9280'),
 			})
 			// Not zero padded, no matter the separator.
 			createSuite(sombra.Hex, [' '], {
@@ -395,8 +509,8 @@ describe('Encodings', () => {
 				3: bufferFrom('61'),
 				4: bufferFrom('68 65 6c 6c 6f'),
 				5: bufferFrom('41 76 6f 63 61 64 6f 73 20 61 72 65 20 75 73 65 6c 65 73 73 2e'),
-				6: bufferFrom('e2 98 a2'),
-				7: bufferFrom('63 64 46 30 c2 a7 29 c3 ba 2e 67 39 2d c5 99 3b c2 b0 c3 a1 c2 b4 24 2a 36 e2 98 a2'),
+				6: bufferFrom('f0 9f 92 80'),
+				7: bufferFrom('63 64 46 30 c2 a7 29 c3 ba 2e 67 39 2d c5 99 3b c2 b0 c3 a1 c2 b4 24 2a 36 f0 9f 92 80'),
 			})
 			createSuite(sombra.Hex, ['-'], {
 				4: bufferFrom('68-65-6c-6c-6f'),
@@ -419,8 +533,8 @@ describe('Encodings', () => {
 				3: bufferFrom('097'),
 				4: bufferFrom('104101108108111'),
 				5: bufferFrom('065118111099097100111115032097114101032117115101108101115115046'),
-				6: bufferFrom('226152162'),
-				7: bufferFrom('099100070048194167041195186046103057045197153059194176195161194180036042054226152162'),
+				6: bufferFrom('240159146128'),
+				7: bufferFrom('099100070048194167041195186046103057045197153059194176195161194180036042054240159146128'),
 			})
 			createSuite(sombra.Dec, [' '], {
 				1: bufferFrom('0'),
@@ -428,8 +542,8 @@ describe('Encodings', () => {
 				3: bufferFrom('97'),
 				4: bufferFrom('104 101 108 108 111'),
 				5: bufferFrom('65 118 111 99 97 100 111 115 32 97 114 101 32 117 115 101 108 101 115 115 46'),
-				6: bufferFrom('226 152 162'),
-				7: bufferFrom('99 100 70 48 194 167 41 195 186 46 103 57 45 197 153 59 194 176 195 161 194 180 36 42 54 226 152 162'),
+				6: bufferFrom('240 159 146 128'),
+				7: bufferFrom('99 100 70 48 194 167 41 195 186 46 103 57 45 197 153 59 194 176 195 161 194 180 36 42 54 240 159 146 128'),
 			})
 			createSuite(sombra.Dec, ['-'], {
 				5: bufferFrom('65-118-111-99-97-100-111-115-32-97-114-101-32-117-115-101-108-101-115-115-46'),
@@ -440,36 +554,48 @@ describe('Encodings', () => {
 
 	describe('Entity', () => {
 
-		it('NcrDec', async () => {
-			assert.deepEqual(sombra.NcrDec.encode(bufferFrom('a')), bufferFrom('&#97;'))
-			assert.deepEqual(sombra.NcrDec.encode(bufferFrom('Σ')), bufferFrom('&#931;'))
-			assert.deepEqual(sombra.NcrDec.encode(bufferFrom('€♦☢')), bufferFrom('&#8364;&#9830;&#9762;'))
-			assert.deepEqual(sombra.NcrDec.encode(bufferFrom('<>')), bufferFrom('&#60;&#62;'))
-			//assert.deepEqual(sombra.NcrDec.encode(bufferFrom('</div>')), bufferFrom('&#60;/div&#62;')) // TODO - advanced in place en/decoding
-		})
+		createFullSuite('ncrdec', [
+			['a',   '&#97;'],
+			['Σ',   '&#931;'],
+			['💀', '&#128128;'],
+			['€♦💀', '&#8364;&#9830;&#128128;'],
+			['<>',   '&#60;&#62;'],
+			//['</div>', '&#60;/div&#62;'], // TODO - advanced in place en/decoding
+		])
 
-		it('NcrHex', async () => {
-			assert.deepEqual(sombra.NcrHex.encode(bufferFrom('a')), bufferFrom('&#x61;'))
-			assert.deepEqual(sombra.NcrHex.encode(bufferFrom('Σ')), bufferFrom('&#x3a3;'))
-			assert.deepEqual(sombra.NcrHex.encode(bufferFrom('€♦☢')), bufferFrom('&#x20ac;&#x2666;&#x2622;'))
-			assert.deepEqual(sombra.NcrHex.encode(bufferFrom('<>')), bufferFrom('&#x3c;&#x3e;'))
-			//assert.deepEqual(sombra.NcrHex.encode(bufferFrom('</div>')), bufferFrom('&#x3c;/div&#x3e;')) // TODO - advanced in place en/decoding
-		})
+		createFullSuite('ncrhex', [
+			['a',   '&#x61;'],
+			['Σ',   '&#x3a3;'],
+			['💀', '&#x1f480;'],
+			['€♦💀', '&#x20ac;&#x2666;&#x1f480;'],
+			['<>',  '&#x3c;&#x3e;'],
+			//['</div>', '&#x3c;/div&#x3e;'], // TODO - advanced in place en/decoding
+		])
 
-		it('UnicodeEscaped', async () => {
-			assert.deepEqual(sombra.UnicodeEscaped.encode(bufferFrom('a')), bufferFrom('\\u61'))
-			assert.deepEqual(sombra.UnicodeEscaped.encode(bufferFrom('Σ')), bufferFrom('\\u3a3'))
-			assert.deepEqual(sombra.UnicodeEscaped.encode(bufferFrom('€♦☢')), bufferFrom('\\u20ac\\u2666\\u2622'))
-			assert.deepEqual(sombra.UnicodeEscaped.encode(bufferFrom('<>')), bufferFrom('\\u3c\\u3e'))
-			//assert.deepEqual(sombra.UnicodeEscaped.encode(bufferFrom('</div>')), bufferFrom('\\u3c/div\\u3e')) // TODO - advanced in place en/decoding
-		})
+		createFullSuite('unicodeescaped', [
+			['a',   '\\u61'],
+			['Σ',   '\\u3a3'],
+			['💀', '\\u1f480'],
+			['€♦💀', '\\u20ac\\u2666\\u1f480'],
+			['<>',  '\\u3c\\u3e'],
+			//['</div>', '\\u3c/div\\u3e'], // TODO - advanced in place en/decoding
+		])
 
-		it('Unicode', async () => {
-			assert.deepEqual(sombra.Unicode.encode(bufferFrom('a')), bufferFrom('U+0061'))
-			assert.deepEqual(sombra.Unicode.encode(bufferFrom('Σ')), bufferFrom('U+03A3'))
-			assert.deepEqual(sombra.Unicode.encode(bufferFrom('€♦☢')), bufferFrom('U+20ACU+2666U+2622'))
-			assert.deepEqual(sombra.Unicode.encode(bufferFrom('<>')), bufferFrom('U+003CU+003E'))
-			//assert.deepEqual(sombra.Unicode.encode(bufferFrom('</div>')), bufferFrom('U+003C/divU+003E')) // TODO - advanced in place en/decoding
+		createFullSuite('unicode', [
+			['a',   'U+0061'],
+			['Σ',   'U+03A3'],
+			['💀', 'U+1F480'],
+			['€♦💀', 'U+20ACU+2666U+1F480'],
+			['<>',  'U+003CU+003E'],
+			//['</div>', 'U+003C/divU+003E'], // TODO - advanced in place en/decoding
+		])
+
+		createFullSuite('html', [
+			['</div>', '&lt;/div&gt;'],
+		], () => {
+			//it('decodes named and number equivalents', async () => {
+			//	assert.deepEqual(sombra.html.Decoder.convert(bufferFrom('&lt;&#60;&#x3c;')), bufferFrom('<<'))
+			//})
 		})
 
 	})
@@ -499,15 +625,12 @@ describe('Checksums', () => {
 			3: '9f',
 			4: 'ec',
 			5: '26',
-			//7: 'CF', // TODO: fix
 		})
 		createSuite(sombra.TwosComplement, [16], {
 			5: 'F826',
-			//7: 'F3CF', // TODO: fix
 		})
 		createSuite(sombra.TwosComplement, [32], {
 			5: 'FFFFF826',
-			//7: 'FFFFF3CF', // TODO: fix
 		})
 	})
 
@@ -521,13 +644,13 @@ describe('Checksums', () => {
 	describe('Crc32', () => {
 		createSuite(sombra.Crc32, {
 			0: '00000000',
-			1: 'D202EF8D',
-			2: 'FF000000',
-			3: 'E8B7BE43',
-			4: '3610A686',
-			5: '71B3F376',
-			6: 'D4671F0A',
-			7: '4D89F323',
+			1: 'd202ef8d',
+			2: 'ff000000',
+			3: 'e8b7be43',
+			4: '3610a686',
+			5: '71b3f376',
+			6: 'ffa25dce',
+			7: 'bd892b4e',
 		})
 		//describe('Variants', () => {
 			// TODO: add mode CRC algorithms in the future
@@ -539,11 +662,11 @@ describe('Checksums', () => {
 			0: '0000', // todo
 			1: '0000', // todo
 			2: '4040', // todo
-			3: 'E8C1',
-			4: '34D2',
-			5: 'DBCB',
-			6: '4F4A',
-			7: '7D9E',
+			3: 'e8c1',
+			4: '34d2',
+			5: 'dbcb',
+			6: 'ee6f',
+			7: 'b15d',
 		})
 
 		describe('Variants', () => {
