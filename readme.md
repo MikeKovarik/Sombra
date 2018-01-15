@@ -11,6 +11,12 @@ In anticipation of Overwatch's new character Sombra an [ARG game](https://wiki.g
 
 *Note:* The gif depicts an app that is not released yet. Hopefuly sometime in the future it will. And it is powered by this library.
 
+## Installation
+
+```
+npm install sombra
+```
+
 ## Features
 
 ### Convertors and translators
@@ -86,7 +92,9 @@ myReadStreamFromString('boop')
 
 ## API
 
-Not stabilized yet. Work in progress.
+Not stabilized yet but the examples from above work just fine.
+
+Work in progress. More sugar incoming.
 
 
 ## Plans for the future
@@ -100,7 +108,7 @@ Not stabilized yet. Work in progress.
 
 ## Note on special characters
 
-Sombra, just like Browser's TextEncoder API or Node's Buffer (by default) works with Utf8 formatted strings. That means special characters will become represented by twoor more bytes bytes. For example `§ = <Buffer c2 a7>` and `💀 = <Buffer f0 9f 92 80>`
+Sombra, just like Browser's TextEncoder API or Node's Buffer (by default) works with Utf8 formatted strings. That means special characters will become represented by two or more bytes bytes. For example `§ = <Buffer c2 a7>` and `💀 = <Buffer f0 9f 92 80>`
 
 <p align="center">
   <img src="./sombra.jpg">
