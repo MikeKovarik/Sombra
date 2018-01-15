@@ -1,0 +1,23 @@
+{
+  "name": "sombra",
+  "version": "0.0.1",
+  "description": "",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "test": "mocha test/test.js --watch"
+  },
+  "author": "Mike Kovařík",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MikeKovarik/sombra.git"
+  },
+  "dev-dependencies": {
+    "babel-plugin-transform-class-properties": "^6.24.1",
+    "chai": "^4.1.2",
+    "mocha": "^4.1.0",
+    "rollup": "^0.51.7",
+    "rollup-plugin-babel": "^3.0.3"
+  }
+}
