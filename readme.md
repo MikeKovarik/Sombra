@@ -43,8 +43,8 @@ sombra.Unicode.encode('💀').toString('hex') // U+D83DU+DC80
 Ceasar, clock, atbash, A1-Z26, morse code, and many more in the works or with preliminary implementation.
 
 ``` js
-sombra.Caesar.encode('Avocados are useless.').toString('hex') // Xslzxalp xob rpbibpp.
-sombra.Morse.encode('hello').toString('hex') // .... . .-.. .-.. ---
+sombra.Caesar.encode('Avocados are useless.').toString() // Xslzxalp xob rpbibpp.
+sombra.Morse.encode('hello').toString() // .... . .-.. .-.. ---
 ```
 
 #### Checksums
