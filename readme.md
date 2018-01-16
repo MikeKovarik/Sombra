@@ -25,6 +25,12 @@ npm install sombra
 
 Numerical: Binary, Octal, Decimal, Hexadecimal, Base64, Custom radix
 
+``` js
+sombra.Bin.encode('boop').toString() // 01100010 01101111 01101111 01110000
+sombra.Bin.encode('boop', '.').toString() // 01100010.01101111.01101111.01110000
+sombra.Hex.encode('boop', '-').toString() // 62-6f-6f-70
+```
+
 Entity escapers: NCR (HTML entities), Unicode
 
 ``` js
@@ -38,7 +44,7 @@ Ceasar, clock, atbash, A1-Z26, morse code, and many more in the works or with pr
 
 ``` js
 sombra.Caesar.encode('Avocados are useless.').toString('hex') // Xslzxalp xob rpbibpp.
-sombra.Morse.encode('💀hello').toString('hex') // .... . .-.. .-.. ---
+sombra.Morse.encode('hello').toString('hex') // .... . .-.. .-.. ---
 ```
 
 #### Checksums
@@ -47,7 +53,7 @@ CRC-16, CRC-32, xor, 2's complement, sum
 
 ``` js
 sombra.Crc32.encode('Avocados are useless.').toString('hex') // 71b3f376
-sombra.TwosComplement.encode('💀Avocados are useless.').toString('hex') // 26
+sombra.TwosComplement.encode('Avocados are useless.').toString('hex') // 26
 ```
 
 #### Hashing algorithms
