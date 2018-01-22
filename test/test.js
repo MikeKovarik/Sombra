@@ -552,21 +552,25 @@ describe('Encodings', () => {
 
 	})
 
+	// ཨ  in UTF-8 = 0xE0 0xBD 0xA8; in UTF-16 = 0x0F68
+	// 𠀋 in UTF-8 = 0xF0 0xA0 0x80 0x8B, in UTF-16 = 0xD840 0xDC0B, in UTF-32 = 0x0002000B, html entity hex = &#x2000b;
+	// 💀 in UTF-8 = 0xF0 0x9F 0x92 0x80, in UTF-16 = 0xD83D 0xDC80, in UTF-32 = 0x0001F480, html entity hex = &#x1f480;
+
 	describe('Entity', () => {
 
 		createFullSuite('ncrdec', [
 			['a',   '&#97;'],
 			['Σ',   '&#931;'],
-			['💀', '&#128128;'],
+			['💀',   '&#128128;'],
 			['€♦💀', '&#8364;&#9830;&#128128;'],
-			['<>',   '&#60;&#62;'],
+			['<>',  '&#60;&#62;'],
 			//['</div>', '&#60;/div&#62;'], // TODO - advanced in place en/decoding
 		])
 
 		createFullSuite('ncrhex', [
-			['a',   '&#x61;'],
-			['Σ',   '&#x3a3;'],
-			['💀', '&#x1f480;'],
+			['a',  '&#x61;'],
+			['Σ',  '&#x3a3;'],
+			['💀',  '&#x1f480;'],
 			['€♦💀', '&#x20ac;&#x2666;&#x1f480;'],
 			['<>',  '&#x3c;&#x3e;'],
 			//['</div>', '&#x3c;/div&#x3e;'], // TODO - advanced in place en/decoding
@@ -575,7 +579,7 @@ describe('Encodings', () => {
 		createFullSuite('unicodeescaped', [
 			['a',   '\\u61'],
 			['Σ',   '\\u3a3'],
-			['💀', '\\u1f480'],
+			['💀',   '\\u1f480'],
 			['€♦💀', '\\u20ac\\u2666\\u1f480'],
 			['<>',  '\\u3c\\u3e'],
 			//['</div>', '\\u3c/div\\u3e'], // TODO - advanced in place en/decoding
@@ -584,7 +588,7 @@ describe('Encodings', () => {
 		createFullSuite('unicode', [
 			['a',   'U+0061'],
 			['Σ',   'U+03A3'],
-			['💀', 'U+1F480'],
+			['💀',   'U+1F480'],
 			['€♦💀', 'U+20ACU+2666U+1F480'],
 			['<>',  'U+003CU+003E'],
 			//['</div>', 'U+003C/divU+003E'], // TODO - advanced in place en/decoding

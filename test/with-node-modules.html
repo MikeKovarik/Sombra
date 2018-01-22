@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Sombra with Node modules</title>
+	<link href="../node_modules/mocha/mocha.css" rel="stylesheet" />
+	<style>
+	</style>
+</head>
+<body>
+
+	<div id="mocha"></div>
+
+	<!-- bundles or shimms of node.js globals and core modules -->
+	<script src="../node_modules_bundled/node-globals-shim.js"></script>
+	<script src="../node_modules_bundled/events.js"></script>
+	<script src="../node_modules_bundled/buffer.js"></script>
+	<script src="../node_modules_bundled/util.js"></script>
+	<script src="../node_modules_bundled/stream.js"></script>
+
+	<!-- testing framework -->
+	<script src="../node_modules/mocha/mocha.js"></script>
+	<script src="../node_modules/chai/chai.js"></script>
+
+	<!-- libary -->
+	<script src="../index.js"></script>
+	<!-- tests -->
+	<script src="test.js"></script>
+
+</body>
+</html>

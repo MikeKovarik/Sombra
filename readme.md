@@ -3,7 +3,7 @@
 
 ## 1NF:rM@7iON 1S P0vvErr
 
-In anticipation of Overwatch's new character Sombra an [ARG game](https://wiki.gamedetectives.net/index.php?title=Sombra_ARG) was held by Blizzard. Ciphered clues and puzzles were hidden throughout the game and websites. To help with cracking them Ive put together an app with various convertors, encoders and cipher translators. The ARG is now over but I'd still like to publish the app as it has shown to be useful when developing stuff, educational and simply fun to play with. First step on the road was to release this library of encoders/decoders that power it.
+In anticipation of Overwatch's new character Sombra an [ARG game](https://wiki.gamedetectives.net/index.php?title=Sombra_ARG) was held by Blizzard. Ciphered clues and puzzles were hidden throughout the game and websites. To help with cracking them I have put together an app with various convertors, encoders and cipher translators. The ARG is now over but I'd still like to publish the app as it has shown to be useful when developing stuff, educational and simply fun to play with. First step on the road was to release this library of encoders/decoders that power it.
 
 <p align="center">
   <img src="./app.gif">
@@ -17,6 +17,8 @@ In anticipation of Overwatch's new character Sombra an [ARG game](https://wiki.g
 npm install sombra
 ```
 
+TODO require/import/<script>
+
 ## Features
 
 ### Convertors and translators
@@ -25,7 +27,7 @@ npm install sombra
 
 Numerical: Binary, Octal, Decimal, Hexadecimal, Base64, Custom radix
 
-``` js
+```js
 sombra.Bin.encode('boop').toString() // 01100010 01101111 01101111 01110000
 sombra.Bin.encode('boop', '.').toString() // 01100010.01101111.01101111.01110000
 sombra.Hex.encode('boop', '-').toString() // 62-6f-6f-70
@@ -33,16 +35,16 @@ sombra.Hex.encode('boop', '-').toString() // 62-6f-6f-70
 
 Entity escapers: NCR (HTML entities), Unicode
 
-``` js
+```js
 sombra.NcrDec.encode('<').toString('hex') // &#60;
-sombra.Unicode.encode('💀').toString('hex') // U+D83DU+DC80
+sombra.Unicode.encode('💀').toString('hex') // U+1F480
 ```
 
 ### Ciphers
 
 Ceasar, clock, atbash, A1-Z26, morse code, and many more in the works or with preliminary implementation.
 
-``` js
+```js
 sombra.Caesar.encode('Avocados are useless.').toString() // Xslzxalp xob rpbibpp.
 sombra.Morse.encode('hello').toString() // .... . .-.. .-.. ---
 ```
@@ -51,7 +53,7 @@ sombra.Morse.encode('hello').toString() // .... . .-.. .-.. ---
 
 CRC-16, CRC-32, xor, 2's complement, sum
 
-``` js
+```js
 sombra.Crc32.encode('Avocados are useless.').toString('hex') // 71b3f376
 sombra.TwosComplement.encode('Avocados are useless.').toString('hex') // 26
 ```
@@ -111,6 +113,16 @@ Work in progress. More sugar incoming.
 * Streamable Decoder classes. Each class currently is a stream of `.encode()`. Despite having `.decode()` method there's not.
 * CRC variants (modbus, xmodem, kermit, etc...)
 
+[] Vigenere cipher
+[] ROT13 cipher
+[] ROT13 variants
+[] XOR cipher
+[] Bifid cipher
+[] Leet speak
+[] BCD encoding
+[] Unicode and NCR encoding
+[] HTML/XML entity escaping
+
 
 ## Note on special characters
 
@@ -119,3 +131,7 @@ Sombra, just like Browser's TextEncoder API or Node's Buffer (by default) works 
 <p align="center">
   <img src="./sombra.jpg">
 </p>
+
+## Credits
+
+Made by Mike Kovařík, Mutiny.cz
