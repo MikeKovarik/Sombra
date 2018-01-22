@@ -18,6 +18,7 @@ export var Transform = stream && stream.Transform ? stream.Transform : class {}
 export var bufferAlloc
 export var bufferAllocUnsafe
 export var bufferFrom
+export var bufferConcat
 export var bufferToString
 
 if (_Buffer) {
@@ -43,6 +44,7 @@ if (Buffer) {
 	bufferAlloc       = Buffer.alloc
 	bufferAllocUnsafe = Buffer.allocUnsafe
 	bufferFrom        = Buffer.from
+	bufferConcat      = Buffer.concat
 	bufferToString    = (buffer, encoding) => buffer.toString(encoding)
 
 	bufferFromUtf8       = data => Buffer.from(data, 'utf8')
@@ -57,24 +59,40 @@ if (Buffer) {
 	// Shim of Buffer.alloc() & Buffer.allocUnsafe(). Note: Uint8Array is always 0 filled.
 	bufferAlloc = bufferAllocUnsafe = size => new Uint8Array(size)
 
+	bufferConcat = buffers => {
+		buffers = buffers.filter(buffer => buffer && buffer.length > 0)
+		var size = buffers.reduce((sum, item) => sum + item.length, 0)
+		var output = new Uint8Array(size)
+		if (size === 0) return output
+		var previousItem = buffers.shift()
+		output.set(previousItem)
+		var currentItem
+		while (buffers.length) {
+			output.set(buffers[0], previousItem.length)
+			previousItem = buffers.shift()
+		}
+		return output
+	}
+
 	// UTF8, depends on availability of TextDecoder/TextEncoder and platform.
 	if (typeof TextDecoder !== 'undefined') {
 		// browser supporting Encoding API
-		let decoder = new TextDecoder('utf-8')
 		let encoder = new TextEncoder('utf-8')
+		let decoder = new TextDecoder('utf-8')
 		bufferFromUtf8 = string => encoder.encode(string)
 		bufferToStringUtf8 = buffer => decoder.decode(buffer)
-	} else if (platform.uwp) {
-		// Windows UWP
-		let CryptographicBuffer = Windows.Security.Cryptography.CryptographicBuffer
-		let utf8enc = Windows.Security.Cryptography.BinaryStringEncoding.utf8
+	} else {
+		// Shim for decoding/encoding UTF8.
 		bufferFromUtf8 = string => {
-			var iBuffer = CryptographicBuffer.convertStringToBinary(string, utf8enc)
-			return new Uint8Array(iBuffer)
+			var escaped = unescape(encodeURIComponent(string))
+			var buffer = new Uint8Array(escaped.length)
+			for (var i = 0; i < escaped.length; i++)
+				buffer[i] = escaped.charCodeAt(i)
+			return buffer
 		}
 		bufferToStringUtf8 = buffer => {
-			var iBuffer = CryptographicBuffer.createFromByteArray(buffer)
-			return CryptographicBuffer.convertBinaryToString(utf8enc, iBuffer)
+			var escaped = String.fromCharCode(...buffer)
+			return decodeURIComponent(escape(escaped))
 		}
 	}
 
@@ -138,3 +156,12 @@ if (Buffer) {
 
 }
 
+// OTHER BUFFER UTILITIES
+
+// Turns int number into buffer (e.g. 0xABCDEF56 => <AB,CD,EF,56>)
+export function bufferFromInt(int, bytes) {
+	var buffer = bufferAlloc(bytes)
+	for (var i = 0; i < bytes; i++)
+		buffer[bytes - i - 1] = int >>> (i * 8)
+	return buffer
+}
