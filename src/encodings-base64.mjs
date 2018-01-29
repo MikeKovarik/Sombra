@@ -1,13 +1,10 @@
-import {bufferFromUtf8, bufferToStringUtf8, bufferFromBase64, bufferToStringBase64} from './node-builtins.mjs'
+import {bufferFromUtf8, bufferToStringUtf8, bufferFromBase64, bufferToStringBase64, encodeUtf8} from './node-builtins.mjs'
 import {bufferFrom} from './node-builtins.mjs'
 import {platform} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
 
 
 export class Base64 extends SombraTransform {
-
-	// TODO: _transform methods for stream
-	// TODO: turn this into two transform stream classes (one for decoding, second to encoding)
 
 	static validate = string => string.match(/^[A-Za-z0-9+/=]*$/) === null
 
@@ -16,40 +13,38 @@ export class Base64 extends SombraTransform {
 	// This is because of piping
 	// e.g. Buffer.from('ff', 'hex') => Buffer.from('/w==', 'utf8')
 	//      <Buffer ff>              => <Buffer 2f 77 3d 3d>
-	_encode(buffer) {
-		return bufferFromUtf8(bufferToStringBase64(buffer))
+	_encode(chunk) {
+		return bufferFromUtf8(bufferToStringBase64(chunk))
 	}
 
 	// Reversal of .encode(). Takes in buffer (form of base64 string) and returns buffer.
-	_decode(buffer) {
-		return bufferFromBase64(bufferToStringUtf8(buffer))
+	_decode(chunk) {
+		if (typeof chunk === 'string')
+			return btoa(encodeUtf8(chunk))
+		else
+			return btoa(String.fromCharCode(...chunk))
 	}
-
-	static toString(buffer) {
-		buffer = bufferFrom(buffer)
-		return bufferToStringBase64(buffer)
-	}
-
-	static fromString = bufferFromBase64 // todo
-
 
 	_update(chunk) {
+		// 3 bytes of data can be encoded into 4 base64 characters (bytes)
+		// and vice versa - 4 b64 character are minimum chunk size for decoding.
+		var minChunkSize = this.encoder ? 3 : 4
 		if (this.lastChunk) {
 			chunk = Buffer.concat([this.lastChunk, chunk])
 			this.lastChunk = undefined
 		}
 		var chunkLength = chunk.length
-		if (chunkLength < 3) {
+		if (chunkLength < minChunkSize) {
 			this.lastChunk = chunk
 			return
-		}
-		var overflowBytes = chunkLength % 3
-		if (overflowBytes) {
-			this.lastChunk = chunk.slice(chunkLength - overflowBytes)
-			chunk = chunk.slice(0, chunkLength - overflowBytes)
-		}
-		if (chunk)
+		} else if (chunkLength > 0) {
+			var overflowBytes = chunkLength % minChunkSize
+			if (overflowBytes) {
+				this.lastChunk = chunk.slice(chunkLength - overflowBytes)
+				chunk = chunk.slice(0, chunkLength - overflowBytes)
+			}
 			return this._encode(chunk)
+		}
 	}
 
 	_digest() {

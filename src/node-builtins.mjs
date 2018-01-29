@@ -84,7 +84,7 @@ if (Buffer) {
 	} else {
 		// Shim for decoding/encoding UTF8.
 		bufferFromUtf8 = string => {
-			var escaped = unescape(encodeURIComponent(string))
+			var escaped = encodeUtf8(string)
 			var buffer = new Uint8Array(escaped.length)
 			for (var i = 0; i < escaped.length; i++)
 				buffer[i] = escaped.charCodeAt(i)
@@ -92,7 +92,7 @@ if (Buffer) {
 		}
 		bufferToStringUtf8 = buffer => {
 			var escaped = String.fromCharCode(...buffer)
-			return decodeURIComponent(escape(escaped))
+			return decodeUtf8(escaped)
 		}
 	}
 
@@ -122,15 +122,10 @@ if (Buffer) {
 		return buffer
 	}
 	bufferToStringBase64 = buffer => {
-		var CHUNK_SIZE = 0xFFFF
-		var temp = ''
-		var slice
-		for (var i = 0; i < buffer.length; i += CHUNK_SIZE) {
-			slice = buffer.subarray(i, Math.min(i + CHUNK_SIZE, buffer.length)) 
-			temp += String.fromCharCode.apply(null, slice)
-			console.log(i, slice, temp)
-		}
-		return btoa(temp)
+		// converts buffer into UTF8 string that can be passed int btoa.
+		// NOTE: btoa('č') throws error but 'č' encodes as 'Ä' or [196, 141]
+		//       which can be btoa'd.
+		return btoa(String.fromCharCode(...buffer))
 	}
 
 	// Shim of Buffer.from(data, encoding)
@@ -164,4 +159,20 @@ export function bufferFromInt(int, bytes) {
 	for (var i = 0; i < bytes; i++)
 		buffer[bytes - i - 1] = int >>> (i * 8)
 	return buffer
+}
+
+
+
+
+
+// TODO: Figure out a way to use this UTF8 escaping
+
+// converts 'ཨ' into 'à½¨', 'í' into 'Ã', 'ž' into 'Å¾'
+export function encodeUtf8(rawString) {
+	return unescape(encodeURIComponent(rawString))
+}
+
+// converts 'à½¨' into 'ཨ', 'Ã' into 'í', 'Å¾' into 'ž'
+export function decodeUtf8(escapedString) {
+	return decodeURIComponent(escape(escapedString))
 }

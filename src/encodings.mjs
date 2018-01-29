@@ -53,21 +53,3 @@ export function finalizeEncoding(buffer, encoding) {
 	else
 		return buffer
 }
-
-
-
-
-/*
-// TODO: Figure out a way to use this UTF8 escaping
-
-// converts 'ཨ' into 'à½¨', 'í' into 'Ã', 'ž' into 'Å¾'
-function encodeUtf8(rawString) {
-	return unescape(encodeURIComponent(rawString))
-}
-
-// converts 'à½¨' into 'ཨ', 'Ã' into 'í', 'Å¾' into 'ž'
-function decodeUtf8(escapedString) {
-	return decodeURIComponent(escape(escapedString))
-}
-
-*/
