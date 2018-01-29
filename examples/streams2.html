@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Sombra streaming</title>
+	<link href="../node_modules/mocha/mocha.css" rel="stylesheet" />
+	<style>
+	body {
+		padding: 24px;
+		font-family: Segoe UI;
+	}
+	</style>
+</head>
+<body>
+
+	<textarea id="input"></textarea>
+	<br>
+	<h3>BIN</h3>
+	<pre id="bin"></pre>
+	<h3>HEX</h3>
+	<pre id="hex"></pre>
+	<h3>NCR</h3>
+	<textarea id="ncrhex"></textarea>
+	<h3>HTML</h3>
+	<textarea id="html"></textarea>
+
+	<!-- bundles or shimms of node.js globals and core modules -->
+	<script src="../node_modules_bundled/node-globals-shim.js"></script>
+	<script src="../node_modules_bundled/events.js"></script>
+	<script src="../node_modules_bundled/buffer.js"></script>
+	<script src="../node_modules_bundled/util.js"></script>
+	<script src="../node_modules_bundled/stream.js"></script>
+
+	<!-- libary -->
+	<script src="../index.js"></script>
+
+	<script>
+		// This mess will be gone as changes are worked into sombra.
+		var {Bin, Hex} = sombra
+		var {EntityEncoder} = sombra.encodings
+		EntityEncoder.prototype._update = EntityEncoder.prototype._encode
+		Bin.prototype._update = Bin.prototype._encode
+		Hex.prototype._update = Hex.prototype._encode
+		sombra.encodings.html.Encoder.prototype._update = sombra.encodings.html.Encoder.prototype._encode
+		sombra.encodings.html.Decoder.prototype._update = sombra.encodings.html.Decoder.prototype._encode
+
+		var $input = document.querySelector('#input')
+		var $bin = document.querySelector('#bin')
+		var $hex = document.querySelector('#hex')
+		var $ncrhex = document.querySelector('#ncrhex')
+		var $html = document.querySelector('#html')
+
+		function createDomReadStream(target, event = 'input', property = 'value') {
+			const inStream = new stream.Readable
+			inStream._read = () => {}
+			target.addEventListener(event, e => console.log('#', target[property]))
+			target.addEventListener(event, e => inStream.push(target[property]))
+			return inStream
+		}
+
+		function createDomWriteStream(target) {
+			const outStream = new stream.Writable
+			if (target.localName === 'textarea' || target.localName === 'input') {
+				outStream._write = (chunk, encoding, callback) => {
+					console.log('_write', chunk)
+					target.value = chunk.toString()
+					callback()
+				}
+			} else {
+				outStream._write = (chunk, encoding, callback) => {
+					console.log('_write', chunk)
+					target.innerText = chunk.toString()
+					callback()
+				}
+			}
+			return outStream
+		}
+
+		var inputStream = createDomReadStream($input)
+
+		inputStream
+			.pipe(new sombra.encodings.Bin)
+			.pipe(createDomWriteStream($bin))
+
+		inputStream
+			.pipe(new sombra.encodings.Hex)
+			.pipe(createDomWriteStream($hex))
+
+		inputStream
+			.pipe(new sombra.encodings.ncrhex.Encoder)
+			.pipe(createDomWriteStream($ncrhex))
+
+		inputStream
+			.pipe(new sombra.encodings.html.Encoder)
+			.pipe(createDomWriteStream($html))
+
+		var names = ['ncrhex', 'html']
+		names.forEach(inputName => {
+			var $input = document.querySelector(`#${inputName}`)
+			names.forEach(outputName => {
+				if (inputName === outputName) return
+				var $output = document.querySelector(`#${outputName}`)
+				createDomReadStream($input)
+					.pipe(new sombra.encodings[inputName].Decoder)
+					//.pipe(new sombra.encodings[outputName].Encoder)
+					.pipe(createDomWriteStream($output))
+			})
+		})
+
+
+		var a = sombra.encodings.html.Encoder.convert('</div>')
+		console.log('a', a.toString())
+		var b = sombra.encodings.html.Decoder.convert('&lt;/div&gt;')
+		console.log('b', b.toString())
+
+	</script>
+
+
+</body>
+</html>
