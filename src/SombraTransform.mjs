@@ -1,12 +1,30 @@
-import {Transform, bufferFrom, bufferToString} from './node-builtins.mjs'
+import {Transform, bufferFrom, bufferToString, bufferConcat} from './node-builtins.mjs'
 
 
 export class SombraTransform extends Transform {
 
-	// Shared constructor for update()/digest() and transform stream.
-
 	constructor(...args) {
 		super()
+
+		// TODO
+		if (this.continuous) {
+			// Endless passthrough stream that converts each chunk as is
+			// without slicing or storing it in order to wait for another part.
+			// Suitable for binding to text fields.
+			// Unsuitable for converting files.
+		} else {
+			// Sequential processing of possibly chunked but ordered and connected data.
+			// Chunks could be further sliced and stored (and their processing delayed)
+			// Until next chunk or until the very end of the stream.
+			// That is to safely handle e.g. html entities that are split in half in two chunks.
+		}
+		// TODO
+		if (this.encode) {
+			// TODO
+		} else if (this.decode) {
+			// TODO
+		}
+
 		// Apply defaults to the arguments (if any defaults are defined).
 		if (this.constructor.args)
 			args = this._preProcessArgs(this.constructor.args, args)
@@ -14,49 +32,55 @@ export class SombraTransform extends Transform {
 		if (this._handleArgs)
 			args = this._handleArgs(...args)
 		this.args = args
+		// Used to store raw chunks for defalt _update/_digest set of functions in algorithms that are not streamable.
+		// _update and _digest can be overwritten by inheritor in which case _rawChunks is useless because _update will
+		// be encoding each chunk on the fly. 
 		this._rawChunks = []
-		this._encodedChunks = []
+		// Used for .digest/.update to handle returned encoded chunks from _update/_digest.
+		this._covertedChunks = []
 		if (this._init)
 			this._init(...args)
 	}
 
-	static convertToString(data, ...args) {
-		var instance = new this(...args)
-		return instance.update(data).digest(this.defaultEncoding || 'utf8')
-	}
-	static convert(data, ...args) {
-		var instance = new this(...args)
-		return instance.update(data).digest()
+	// default implementation to be overwritten where needed
+	_update(chunk/*, ...args*/) {
+		console.log('_update')
+		this._rawChunks.push(chunk)
 	}
 
-	// TODO: Get rid of this mess, make it create instance and rely on update/digest
-	//       so Hash classes can inherit from this.
-	static encode(data, ...args) {
-		// Converts potential strings to buffer and makes sure we don't tamper with user's data.
-		var buffer = bufferFrom(data)
-		// Apply defaults to the arguments (if any defaults are defined).
-		if (this.args)
-			args = this.prototype._preProcessArgs(this.args, args)
-		// Apply Class' args changes, if method for handling them is defined.
-		if (this.prototype._handleArgs)
-			args = this.prototype._handleArgs(...args)
-		// If class defined _encode() method that can do the calculation in one go,
-		// then execute it and bypass the update/digest streaming.
-		if (this.prototype._encode)
-			return this.prototype._encode(buffer, ...args)
-		var context = {
-			constructor: this,
-			prototype: this.prototype,
-		}
-		if (this.prototype._init)
-			this.prototype._init.call(context, ...args)
-		var encodedChunks = [
-			this.prototype._update.call(context, buffer, ...args), 
-			this.prototype._digest.call(context, ...args)
-		].filter(a => a)
-		//console.log('encodedChunks', encodedChunks)
-		//console.log('Buffer.concat(encodedChunks)', Buffer.concat(encodedChunks))
-		return Buffer.concat(encodedChunks)
+	_digest(...args) {
+		console.log('_digest')
+		// Only proceed if there is something to digest.
+		if (this._rawChunks.length === 0)
+			return
+		// Merge unprocessed chunks.
+		var buffer = bufferConcat(this._rawChunks)
+		this._rawChunks = []
+		// Only return if there is something to digest.
+		if (buffer.length)
+			return this._encode(buffer, ...args)
+	}
+
+	static convertToString(data, ...args) {
+		return (new this(...args))
+			.update(data)
+			.digest(this.defaultEncoding || 'utf8')
+	}
+	convertToString(data, ...args) {
+		return this
+			.update(data)
+			.digest(this.defaultEncoding || 'utf8')
+	}
+
+	static convert(data, ...args) {
+		return (new this(...args))
+			.update(data)
+			.digest()
+	}
+	convert(data) {
+		return this
+			.update(data)
+			.digest()
 	}
 
 	// Continual update()/digest() API for streaming sources (other than Node streams).
@@ -71,9 +95,12 @@ export class SombraTransform extends Transform {
 	update(chunk, encoding = 'utf8') {
 		chunk = bufferFrom(chunk, encoding)
 		// TODO: how to pass the value?
-		var returned = this._update(chunk, ...this.args)
-		if (returned)
-			this._encodedChunks.push(returned)
+		var converted = this._update(chunk, ...this.args)
+		if (converted) {
+			if (typeof converted === 'string')
+				converted = bufferFrom(converted)
+			this._covertedChunks.push(converted)
+		}
 		return this
 	}
 
@@ -81,12 +108,15 @@ export class SombraTransform extends Transform {
 	// If encoding is provided a string will be returned; otherwise a Buffer is returned.
 	// The encoding can be 'hex', 'latin1' or 'base64'.
 	digest(encoding) {
-		// TODO: how to pass the value?
-		// TODO: digest has to return the result, but _update is pushing it
-		var returned = this._digest(...this.args)
-		if (returned)
-			this._encodedChunks.push(returned)
-		var result = Buffer.concat(this._encodedChunks)
+		var converted = this._digest(...this.args)
+		if (converted) {
+			if (typeof converted === 'string')
+				converted = bufferFrom(converted)
+			this._covertedChunks.push(converted)
+		}
+		console.log('this._covertedChunks', this._covertedChunks)
+		var result = bufferConcat(this._covertedChunks)
+		this._covertedChunks = []
 		// Always return buffer unless encoding is specified.
 		if (encoding)
 			return bufferToString(result, encoding)
@@ -111,18 +141,7 @@ export class SombraTransform extends Transform {
 		cb()
 	}
 
-	// default implementation to be overwritten where needed
-	_update(chunk/*, ...args*/) {
-		this._rawChunks.push(chunk)
-	}
-
-	_digest(...args) {
-		var buffer = Buffer.concat(this._rawChunks)
-		return this._encode(buffer, ...args)
-	}
-
-
-
+	// HELPER FUNCTIONS
 
 	_preProcessArgs(defaults, custom) {
 		return defaults.map((options, i) => {
@@ -137,17 +156,6 @@ export class SombraTransform extends Transform {
 			return value
 		})
 	}
-/*
-	// TODO: Figure out how to do Decoder streams
-	static decode(buffer) {
-		if (this.args)
-			return this.prototype._decode(buffer, ...this.args.map(o => o.default))
-		else
-			return this.prototype._decode(buffer)
-	}
-*/
-
-	// HELPER FUNCTIONS
 
 	static set chars(newVal) {this._chars = newVal}
 	static set bytes(newVal) {this._bytes = newVal}
