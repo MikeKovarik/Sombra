@@ -113,16 +113,16 @@ Work in progress. More sugar incoming.
 * Streamable Decoder classes. Each class currently is a stream of `.encode()`. Despite having `.decode()` method there's not.
 * CRC variants (modbus, xmodem, kermit, etc...)
 
-[ ] Vigenere cipher
-[ ] ROT13 cipher
-[ ] ROT13 variants
-[ ] XOR cipher
-[ ] Bifid cipher
-[ ] Leet speak
-[ ] BCD encoding
-[ ] Unicode and NCR encoding
-[ ] HTML/XML entity escaping
-[ ] UTF-8 & UTF-16
+- [ ] Vigenere cipher
+- [ ] ROT13 cipher
+- [ ] ROT13 variants
+- [ ] XOR cipher
+- [ ] Bifid cipher
+- [ ] Leet speak
+- [ ] BCD encoding
+- [ ] Unicode and NCR encoding
+- [ ] HTML/XML entity escaping
+- [ ] UTF-8 & UTF-16
 
 
 ## Note on special characters

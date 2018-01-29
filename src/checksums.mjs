@@ -1,5 +1,5 @@
 import {bufferAlloc, bufferToString, bufferFrom} from './node-builtins.mjs'
-import {bufferFromInt} from './util.mjs'
+import {bufferFromInt} from './node-builtins.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
 import {finalizeEncoding, fromString} from './encodings.mjs'
 

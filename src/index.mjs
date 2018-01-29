@@ -8,6 +8,7 @@ export * from './encodings.mjs'
 export * from './checksums.mjs'
 export * from './hashes.mjs'
 export * from './ciphers.mjs'
+export * from './node-builtins.mjs'
 /*
 export * from './util.mjs'
 export * from './ciphers.mjs'

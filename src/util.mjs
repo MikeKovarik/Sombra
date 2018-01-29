@@ -1,10 +1,14 @@
 import _nodeCrypto from 'crypto'
-import {bufferAlloc} from './node-builtins.mjs'
 
-export * from './node-builtins.mjs'
 
 export var nodeCrypto = _nodeCrypto.createCipheriv && _nodeCrypto.Hash ? _nodeCrypto : undefined
 export var webCrypto = typeof window === 'object' ? window.crypto : undefined
+
+export var platform = {
+	node: typeof process === 'object' && process.versions.v8,
+	uwp: typeof Windows === 'object',
+	browser: typeof navigator === 'object',
+}
 
 export function iterator() {
 	return {
@@ -18,21 +22,6 @@ export function iterator() {
 		}
 	}
 }
-
-export var platform = {
-	node: typeof process === 'object' && process.versions.v8,
-	uwp: typeof Windows === 'object',
-	browser: typeof navigator === 'object',
-}
-
-// Turns int number into buffer (e.g. 0xABCDEF56 => <AB,CD,EF,56>)
-export function bufferFromInt(int, bytes) {
-	var buffer = bufferAlloc(bytes)
-	for (var i = 0; i < bytes; i++)
-		buffer[bytes - i - 1] = int >>> (i * 8)
-	return buffer
-}
-
 
 /*
 export function chain(input, actions, returnBuffer = false, defaultAction = 'encode') {
@@ -63,7 +52,7 @@ export function chain(input, actions, returnBuffer = false, defaultAction = 'enc
 // take up to 4 bytes and two characters making it impossible to just iterate over string.
 // This function takes string (of one emoji but realistically multiple characters) and returns charCode.
 function unicodeCharCode(str) {
-	// Strp unicode variation selector and zero-width joiner
+	// Strip unicode variation selector and zero-width joiner
 	//str = str.replace(/\ufe0f|\u200d/gm, '')
 	var i = 0
 	var code = 0

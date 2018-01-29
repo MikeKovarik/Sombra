@@ -1,4 +1,4 @@
-import {bufferFrom, bufferAllocUnsafe} from './node-builtins.mjs'
+import {bufferFromUtf8, bufferAllocUnsafe, bufferFrom} from './node-builtins.mjs'
 import {platform} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
 
@@ -23,14 +23,22 @@ export class NumericEncoding extends SombraTransform {
 		default: ' '
 	}]
 
-	_encode(buffer, separator, radix, chars) {
+	_encode(buffer, separator, radix, chars, prefix, postfix) {
 		radix = radix || this.constructor.radix
 		chars = chars || this.constructor.chars
+		prefix = prefix || this.prefix
+		var uppercase = uppercase || this.uppercase
 		var array = Array.from(buffer)
 			.map(val => val.toString(radix))
 		if (separator.length === 0 || this.constructor.zeroPadded)
 			array = array.map(num => num.padStart(chars, '0'))
-		return bufferFrom(array.join(separator))
+		if (uppercase)
+			array = array.map(num => num.toUpperCase())
+		if (prefix)
+			array = array.map(num => prefix + num)
+		if (postfix)
+			array = array.map(num => postfix + num)
+		return bufferFromUtf8(array.join(separator))
 	}
 
 	static encodeString(buffer, separator = ' ') {
@@ -40,6 +48,7 @@ export class NumericEncoding extends SombraTransform {
 	}
 
 	static decodeString(string, separator = ' ') {
+		console.log('decodeString', string)
 		var {chars, radix} = this
 		if (separator.length) {
 			// Slower parsing using separator over uncertain strings - chunks might not be zero padded.
