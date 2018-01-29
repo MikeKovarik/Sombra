@@ -1,29 +1,44 @@
 import {bufferFrom, bufferToString} from './node-builtins.mjs'
 import {platform} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
+import {ENTITY} from './util-tables.mjs'
 
 
-// Table of commonly known named entities
-var entities = {
-	' ': 'nbsp',
-	"'": 'apos',
-	'<': 'lt',
-	'>': 'gt',
-	'&': 'amp',
-	'"': 'quot',
-	'¢': 'cent',
-	'£': 'pound',
-	'¥': 'yen',
-	'€': 'euro',
-	'©': 'copy',
-	'®': 'reg',
+
+
+/*
+TODO
+memoize input and codepoints
+Codepoints function must use hybrid of codepointat and charcodeat
+getcharcodes manually detect surrogatepairs rather than using codepointat - performace
+create longer array and then slice, rather than pushing
+function fromCodePoint(code) {
+    return code < 0x10000 ? String.fromCharCode(code) : String.fromCodePoint(code);
+}
+*/
+
+function getCharCodes(input) {
+	var output = Array(input.length)
+	for (var i = 0; i < input.length; i++) {
+		output[i] = input.codePointAt(i)
+	}
+	return output
 }
 
-var entityChars = ' \'<>&"¢£¥€©®'
-var entityCodes = [
-	// ' \'<>&"¢£¥€©®'
-	'nbsp', 'apos', 'lt', 'gt', 'amp', 'quot', 'cent', 'pound', 'yen', 'euro', 'copy', 'reg',
-]
+function getCodePoints(input) {
+	var output = []
+	var code
+	for (var i = 0; i < input.length; i++) {
+		code = input.codePointAt(i)
+		if (code > 0xFFFF)
+			i++
+		output.push(code)
+	}
+	return output
+}
+
+
+
 
 function isHexCharacter(character) {
 	return /[0-9A-Fa-f]/.test(character)
@@ -55,41 +70,23 @@ export class EntityEncoder extends SombraTransform {
 
 	_encode(buffer) {
 		var {prefix, postfix, radix, uppercase, zeroPadded} = this.constructor
-		var input = bufferToString(buffer)
+		var inputString = bufferToString(buffer)
+		console.log('inputString', inputString)
 		// Encoded output string
-		var output = ''
-		// Code of the currently read character
-		var charCode
-		// Characters usually take one or two bytes, but emoji and other special unicode characters
-		// take up to 4 bytes and two characters making it impossible to simply iterate over string.
-		// If charcode is greater than 55296 it means it's split into two characters and we need to
-		// keep track of both characters to get the emoji's actual charcode.
-		var prevCode
-		for (var i = 0; i < input.length; i++) {
-			charCode = input.charCodeAt(i)
-			if (prevCode) {
-				// We found second part (second character) of the special character.
-				// Calculate real charcode.
-				charCode = mergeUnicodeCharacters(prevCode, charCode)
-				prevCode = 0
-			} else if (isFirstHalfOfSpecialUnicodeChar(charCode)) {
-				// We found first part of two-character special character. Keep first half's charcode and skip iteration.
-				prevCode = charCode
-				continue
-			}
-			// Encode the character and add it to the output string.
-			output += this._encodeCharacter(charCode, prefix, postfix, radix, uppercase, zeroPadded)
-		}
-		return bufferFrom(output)
+		var outputString = getCodePoints(inputString)
+			.map(code => this._encodeCharacter(code, this))
+			.join('')
+		console.log('outputString', outputString)
+		return bufferFrom(outputString)
 	}
 	
-	_encodeCharacter(char, prefix, postfix, radix, uppercase, zeroPadded) {
-		var stringCode = char.toString(radix)
-		if (uppercase)
+	_encodeCharacter(code, options) {
+		var stringCode = code.toString(options.radix)
+		if (options.uppercase)
 			stringCode = stringCode.toUpperCase()
-		if (zeroPadded)
-			stringCode = stringCode.padStart(zeroPadded, '0')
-		return `${prefix || ''}${stringCode}${postfix || ''}`
+		if (options.zeroPadded)
+			stringCode = stringCode.padStart(options.zeroPadded, '0')
+		return `${options.prefix || ''}${stringCode}${options.postfix || ''}`
 	}
 
 }
@@ -103,7 +100,6 @@ export class EntityDecoder extends SombraTransform {
 		var input = bufferToString(buffer)
 		var remainder = input
 		var prefixIndex
-		var killswitch = 5
 		while ((prefixIndex = remainder.indexOf(prefix)) !== -1) {
 			if (prefixIndex > 0) {
 				var before = remainder.slice(0, prefixIndex)
@@ -126,8 +122,8 @@ export class EntityDecoder extends SombraTransform {
 			var decoded = this._decodeEntity(entity, prefix, postfix, radix) // todo
 			chunks.push(decoded)
 			remainder = remainder.slice(entityEndIndex)
-			if (killswitch-- === 0) return
 		}
+		console.log('chunks', chunks)
 		var output = chunks.join('')
 		return bufferFrom(output)
 	}
@@ -216,15 +212,24 @@ export class Percent extends EntityEncoder {
 
 // </div> => &lt;/div&gt;
 export class HtmlEscaper extends EntityEncoder {
-	_encode(buffer) {
-		var input = bufferToString(buffer)
-		var output = ''
+	_encode(chunk) {
+		console.log('_encode', chunk)
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		console.log('post convert', chunk)
+		// NOTE: All named entities are of characters bellow charcode 9000,
+		//       meaning they only take one byte (and one actual character)
+		//       so bracket notation can be used to compare single characters
+		//       instead of turning them into codepoints.
 		var char
-		for (var i = 0; i < input.length; i++) {
-			char = input[i]
-			output += entities[char] ? `&${entities[char]};` : char
+		var output = ''
+		for (var i = 0; i < chunk.length; i++) {
+			char = chunk[i]
+			var entity = ENTITY.get(char)
+			output += entity ? `&${entity};` : char
 		}
-		return bufferFrom(output)
+		console.log('output', output)
+		return output
 	}
 }
 // </div> => &lt;/div&gt;
@@ -232,23 +237,26 @@ export class HtmlUnescaper extends EntityDecoder {
 	static prefix = '&'
 	static postfix = ';'
 	_decodeEntity(string) {
-		var index = entityCodes.indexOf(string.slice(1, -1))
-		return entityChars[index]
+		var entity = string.slice(1, -1)
+		// return string character (of the named entity)
+		return ENTITY.get(entity)
 	}
 }
 
 
 function createShortcut(Encoder, Decoder) {
 	if (Encoder) {
-		var fn = Encoder.convert.bind(Encoder)
+		var fn = Encoder.convertToString.bind(Encoder)
 		fn.Encoder = Encoder
 		fn.encode = Encoder.convert.bind(Encoder)
+		fn.encodeToString = Encoder.convertToString.bind(Encoder)
 	} else {
 		var fn = {}
 	}
 	if (Decoder) {
 		fn.Decoder = Decoder
 		fn.decode = Decoder.convert.bind(Decoder)
+		fn.decodeToString = Decoder.convertToString.bind(Decoder)
 	}
 	return fn
 }
