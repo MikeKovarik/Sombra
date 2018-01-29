@@ -1,4 +1,5 @@
-import {bufferFromUtf8, bufferToStringUtf8, bufferFromBase64, bufferToStringBase64, encodeUtf8} from './node-builtins.mjs'
+import {bufferFromUtf8, bufferToStringUtf8, bufferFromBase64, bufferToStringBase64} from './node-builtins.mjs'
+import {encodeUtf8, decodeUtf8} from './node-builtins.mjs'
 import {bufferFrom} from './node-builtins.mjs'
 import {platform} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
@@ -14,15 +15,18 @@ export class Base64 extends SombraTransform {
 	// e.g. Buffer.from('ff', 'hex') => Buffer.from('/w==', 'utf8')
 	//      <Buffer ff>              => <Buffer 2f 77 3d 3d>
 	_encode(chunk) {
-		return bufferFromUtf8(bufferToStringBase64(chunk))
+		if (typeof chunk === 'string')
+			return btoa(encodeUtf8(chunk))
+		else
+			return btoa(String.fromCharCode(...chunk))
 	}
 
 	// Reversal of .encode(). Takes in buffer (form of base64 string) and returns buffer.
 	_decode(chunk) {
 		if (typeof chunk === 'string')
-			return btoa(encodeUtf8(chunk))
+			return decodeUtf8(atob(chunk))
 		else
-			return btoa(String.fromCharCode(...chunk))
+			return decodeUtf8(atob(String.fromCharCode(...chunk)))
 	}
 
 	_update(chunk) {
@@ -43,17 +47,14 @@ export class Base64 extends SombraTransform {
 				this.lastChunk = chunk.slice(chunkLength - overflowBytes)
 				chunk = chunk.slice(0, chunkLength - overflowBytes)
 			}
-			return this._encode(chunk)
+			return this._convert(chunk)
 		}
 	}
 
 	_digest() {
 		if (this.lastChunk)
-			return this._encode(this.lastChunk)
+			return this._convert(this.lastChunk)
 	}
-
-	// Note: every 3 bytes result in 3 characters. transform stream can process divisions of 3 and carry
-	// remaining chunks to next computation
 
 }
 
