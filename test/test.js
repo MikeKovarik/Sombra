@@ -411,10 +411,10 @@ describe('checksums', () => {
 		['hello', [0xec]],
 		['Avocados are useless.', [0x26]],
 	])
-	createSuite('twosComplement', [{size: 16}], [
+	createSuite('twosComplement', [{bits: 16}], [
 		['Avocados are useless.', bufferFrom('F826', 'hex')],
 	])
-	createSuite('twosComplement', [{size: 32}], [
+	createSuite('twosComplement', [{bits: 32}], [
 		['Avocados are useless.', bufferFrom('FFFFF826', 'hex')],
 	])
 
