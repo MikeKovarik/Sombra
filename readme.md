@@ -122,7 +122,7 @@ Work in progress. More sugar incoming.
 - [ ] BCD encoding
 - [ ] Unicode and NCR encoding
 - [ ] HTML/XML entity escaping
-- [ ] UTF-8 & UTF-16
+- [x] properly handling and escaping UTF-8 & UTF-16
 
 
 ## Note on special characters

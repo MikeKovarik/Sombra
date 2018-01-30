@@ -1,5 +1,5 @@
 import {bufferFrom, bufferToString} from './node-builtins.mjs'
-import {platform} from './util.mjs'
+import {platform, createApiShortcut} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
 import {ENTITY} from './util-tables.mjs'
 
@@ -66,18 +66,19 @@ function splitUnicodeCharacters(charCode) {
 // TODO: decode
 // TODO: make decoder streamable (through _update and _digest), because the chunks might be split
 //       right in the middle of entity - &#x at the end of one, the hex value at the beginning of second chunk.
-export class EntityEncoder extends SombraTransform {
+export class EntityTransform extends SombraTransform {
 
-	_encode(buffer) {
-		var {prefix, postfix, radix, uppercase, zeroPadded} = this.constructor
-		var inputString = bufferToString(buffer)
-		console.log('inputString', inputString)
+	_encode(chunk, options) {
+		var {prefix, postfix, radix, uppercase, zeroPadded} = options
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		console.log('chunk', chunk)
 		// Encoded output string
-		var outputString = getCodePoints(inputString)
-			.map(code => this._encodeCharacter(code, this))
+		var outputString = getCodePoints(chunk)
+			.map(code => this._encodeCharacter(code, options))
 			.join('')
 		console.log('outputString', outputString)
-		return bufferFrom(outputString)
+		return outputString
 	}
 	
 	_encodeCharacter(code, options) {
@@ -89,21 +90,19 @@ export class EntityEncoder extends SombraTransform {
 		return `${options.prefix || ''}${stringCode}${options.postfix || ''}`
 	}
 
-}
-
-export class EntityDecoder extends SombraTransform {
-
-	_encode(buffer) {
-		var {prefix, postfix, radix} = this.constructor
-
-		var chunks = []
-		var input = bufferToString(buffer)
-		var remainder = input
+	_decode(chunk, options) {
+		var {prefix, postfix} = options
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		console.log('_decode', chunk)
+		var remainder = chunk
 		var prefixIndex
+		var sections = []
+		console.log('prefix', prefix)
 		while ((prefixIndex = remainder.indexOf(prefix)) !== -1) {
 			if (prefixIndex > 0) {
 				var before = remainder.slice(0, prefixIndex)
-				chunks.push(before)
+				sections.push(before)
 			}
 			var entityEndIndex = remainder.length
 			if (postfix) {
@@ -119,18 +118,17 @@ export class EntityDecoder extends SombraTransform {
 				}
 			}
 			var entity = remainder.slice(prefixIndex, entityEndIndex)
-			var decoded = this._decodeEntity(entity, prefix, postfix, radix) // todo
-			chunks.push(decoded)
+			var decoded = this._decodeEntity(entity, options) // todo
+			sections.push(decoded)
 			remainder = remainder.slice(entityEndIndex)
 		}
-		console.log('chunks', chunks)
-		var output = chunks.join('')
-		return bufferFrom(output)
+		console.log('sections', sections)
+		return sections.join('')
 	}
 
-	_decodeEntity(entity, prefix, postfix, radix) {
-		var {prefix, postfix, radix} = this.constructor
-		if (postfix)
+	_decodeEntity(entity, options) {
+		var {prefix, postfix, radix} = options
+		if (postfix.length)
 			var parsed = entity.slice(prefix.length, -postfix.length)
 		else
 			var parsed = entity.slice(prefix.length)
@@ -149,27 +147,16 @@ export class EntityDecoder extends SombraTransform {
 
 // TODO: decode
 // Encodes every character into notation
-export class NcrDec extends EntityEncoder {
+export class NcrDec extends EntityTransform {
 	static prefix = '&#'
 	static postfix = ';'
 	static radix = 10
 }
-export class NcrDecDecoder extends EntityDecoder {
-	static prefix = '&#'
-	static postfix = ';'
-	static radix = 10
-}
-
 
 
 // TODO: decode
 // Encodes every character into notation
-export class NcrHex extends EntityEncoder {
-	static prefix = '&#x'
-	static postfix = ';'
-	static radix = 16
-}
-export class NcrHexDecoder extends EntityDecoder {
+export class NcrHex extends EntityTransform {
 	static prefix = '&#x'
 	static postfix = ';'
 	static radix = 16
@@ -177,41 +164,36 @@ export class NcrHexDecoder extends EntityDecoder {
 
 // TODO: decode
 // Encodes every character into notation
-export class UnicodeEscaped extends EntityEncoder {
-	static prefix = '\\u'
-	static radix = 16
-}
-export class UnicodeEscapedDecoder extends EntityDecoder {
+export class UnicodeEscaped extends EntityTransform {
 	static prefix = '\\u'
 	static radix = 16
 }
 
 // TODO: decode
 // Encodes every character into notation
-export class Unicode extends EntityEncoder {
+export class Unicode extends EntityTransform {
 	static prefix = 'U+'
 	static postfix = ''
 	static radix = 16
 	static uppercase = true
 	static zeroPadded = 4
 }
-export class UnicodeDecoder extends EntityDecoder {
-	static prefix = 'U+'
-	static postfix = ''
-	static radix = 16
-
-}
 
 
 // TODO:
 // </div> => %3C%2Fdiv%3E
-export class Percent extends EntityEncoder {
+export class Percent extends EntityTransform {
 }
 
 
 
 // </div> => &lt;/div&gt;
-export class HtmlEscaper extends EntityEncoder {
+export class HtmlEscaper extends EntityTransform {
+
+	static decoder = true
+	static prefix = '&'
+	static postfix = ';'
+
 	_encode(chunk) {
 		console.log('_encode', chunk)
 		if (typeof chunk !== 'string')
@@ -231,40 +213,19 @@ export class HtmlEscaper extends EntityEncoder {
 		console.log('output', output)
 		return output
 	}
-}
-// </div> => &lt;/div&gt;
-export class HtmlUnescaper extends EntityDecoder {
-	static prefix = '&'
-	static postfix = ';'
+
 	_decodeEntity(string) {
 		var entity = string.slice(1, -1)
 		// return string character (of the named entity)
 		return ENTITY.get(entity)
 	}
+
 }
 
 
-function createShortcut(Encoder, Decoder) {
-	if (Encoder) {
-		var fn = Encoder.convertToString.bind(Encoder)
-		fn.Encoder = Encoder
-		fn.encode = Encoder.convert.bind(Encoder)
-		fn.encodeToString = Encoder.convertToString.bind(Encoder)
-	} else {
-		var fn = {}
-	}
-	if (Decoder) {
-		fn.Decoder = Decoder
-		fn.decode = Decoder.convert.bind(Decoder)
-		fn.decodeToString = Decoder.convertToString.bind(Decoder)
-	}
-	return fn
-}
 
-
-export var ncrdec = createShortcut(NcrDec, NcrDecDecoder)
-//export var ncrdec = createShortcut(undefined, NcrDecDecoder)
-export var ncrhex = createShortcut(NcrHex, NcrHexDecoder)
-export var unicodeescaped = createShortcut(UnicodeEscaped, UnicodeEscapedDecoder)
-export var unicode = createShortcut(Unicode, UnicodeDecoder)
-export var html = createShortcut(HtmlEscaper, HtmlUnescaper)
+export var ncrdec = createApiShortcut(NcrDec)
+export var ncrhex = createApiShortcut(NcrHex)
+export var unicodeescaped = createApiShortcut(UnicodeEscaped)
+export var unicode = createApiShortcut(Unicode)
+export var html = createApiShortcut(HtmlEscaper)

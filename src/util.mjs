@@ -23,6 +23,26 @@ export function iterator() {
 	}
 }
 
+export function createApiShortcut(Class) {
+	var Encoder = class extends Class {
+		encoder = true
+	}
+	var Decoder = class extends Class {
+		decoder = true
+	}
+	var fn = Encoder.convertToString.bind(Encoder)
+	fn.Encoder = Encoder
+	fn.encode = Encoder.convert.bind(Encoder)
+	fn.encodeToString = Encoder.convertToString.bind(Encoder)
+	//if (Decoder !== false) {
+		fn.Decoder = Decoder
+		fn.decode = Decoder.convert.bind(Decoder)
+		fn.decodeToString = Decoder.convertToString.bind(Decoder)
+	//}
+	return fn
+}
+
+
 /*
 export function chain(input, actions, returnBuffer = false, defaultAction = 'encode') {
 	var state = input

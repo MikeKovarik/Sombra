@@ -23,7 +23,7 @@ class SombraChecksum extends SombraTransform {
 	static defaultEncoding = 'hex'
 
 	// All checksums start with 0.
-	_init(arg) {
+	_init() {
 		//console.log('shared._init()', arg)
 		this.value = 0
 	}
@@ -121,7 +121,8 @@ class SombraCrcChecksum extends SombraChecksum {
 	// out xor - what to xor the result with before returning it
 
 	// There is variety of CRC algorithms and each has a different init values, lookup table, xor output
-	_init(variantName) {
+	_init(options) {
+		var {variantName} = options
 		//console.log('crc._init', variantName)
 		var variant = this.constructor.variants[variantName]
 		// Normal form is bit-reverse of Polynomial form.

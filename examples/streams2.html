@@ -37,12 +37,10 @@
 	<script>
 		// This mess will be gone as changes are worked into sombra.
 		var {Bin, Hex} = sombra
-		var {EntityEncoder} = sombra.encodings
-		EntityEncoder.prototype._update = EntityEncoder.prototype._encode
 		Bin.prototype._update = Bin.prototype._encode
 		Hex.prototype._update = Hex.prototype._encode
 		sombra.encodings.html.Encoder.prototype._update = sombra.encodings.html.Encoder.prototype._encode
-		sombra.encodings.html.Decoder.prototype._update = sombra.encodings.html.Decoder.prototype._encode
+		sombra.encodings.html.Decoder.prototype._update = sombra.encodings.html.Decoder.prototype._decode
 
 		var $input = document.querySelector('#input')
 		var $bin = document.querySelector('#bin')
@@ -53,7 +51,6 @@
 		function createDomReadStream(target, event = 'input', property = 'value') {
 			const inStream = new stream.Readable
 			inStream._read = () => {}
-			target.addEventListener(event, e => console.log('#', target[property]))
 			target.addEventListener(event, e => inStream.push(target[property]))
 			return inStream
 		}
@@ -62,13 +59,11 @@
 			const outStream = new stream.Writable
 			if (target.localName === 'textarea' || target.localName === 'input') {
 				outStream._write = (chunk, encoding, callback) => {
-					console.log('_write', chunk)
 					target.value = chunk.toString()
 					callback()
 				}
 			} else {
 				outStream._write = (chunk, encoding, callback) => {
-					console.log('_write', chunk)
 					target.innerText = chunk.toString()
 					callback()
 				}

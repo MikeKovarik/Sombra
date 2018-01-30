@@ -31,12 +31,12 @@ if (_Buffer) {
 // Also exporting internal methods used for shimming Buffer.from() and buffer.toString().
 // Sombra's encoding classes Utf8, Hex and Base64 would normally contain following shims, but it has been moved
 // here to form a coherent shim of Buffer class (due to class hoisting and circular dependencies).
-export var bufferFromUtf8
-export var bufferFromHex
-export var bufferFromBase64
-export var bufferToStringUtf8
-export var bufferToStringHex
-export var bufferToStringBase64
+export var bufferFromUtf8String
+export var bufferFromHexString
+export var bufferFromBase64String
+export var bufferToUtf8String
+export var bufferToHexString
+export var bufferToBase64String
 
 // Wrapper or shims (where necessary) of Buffer methods
 if (Buffer) {
@@ -47,12 +47,12 @@ if (Buffer) {
 	bufferConcat      = Buffer.concat
 	bufferToString    = (buffer, encoding) => buffer.toString(encoding)
 
-	bufferFromUtf8       = data => Buffer.from(data, 'utf8')
-	bufferFromHex        = data => Buffer.from(data, 'hex')
-	bufferFromBase64     = data => Buffer.from(data, 'base64')
-	bufferToStringUtf8   = buffer => buffer.toString('utf8')
-	bufferToStringHex    = buffer => buffer.toString('hex')
-	bufferToStringBase64 = buffer => buffer.toString('base64')
+	bufferFromUtf8String       = data => Buffer.from(data, 'utf8')
+	bufferFromHexString        = data => Buffer.from(data, 'hex')
+	bufferFromBase64String     = data => Buffer.from(data, 'base64')
+	bufferToUtf8String   = buffer => buffer.toString('utf8')
+	bufferToHexString    = buffer => buffer.toString('hex')
+	bufferToBase64String = buffer => buffer.toString('base64')
 
 } else {
 
@@ -79,53 +79,34 @@ if (Buffer) {
 		// browser supporting Encoding API
 		let encoder = new TextEncoder('utf-8')
 		let decoder = new TextDecoder('utf-8')
-		bufferFromUtf8 = string => encoder.encode(string)
-		bufferToStringUtf8 = buffer => decoder.decode(buffer)
+		bufferFromUtf8String = string => encoder.encode(string)
+		bufferToUtf8String   = buffer => decoder.decode(buffer)
 	} else {
 		// Shim for decoding/encoding UTF8.
-		bufferFromUtf8 = string => {
-			var escaped = encodeUtf8(string)
-			var buffer = new Uint8Array(escaped.length)
-			for (var i = 0; i < escaped.length; i++)
-				buffer[i] = escaped.charCodeAt(i)
-			return buffer
-		}
-		bufferToStringUtf8 = buffer => {
-			var escaped = String.fromCharCode(...buffer)
-			return decodeUtf8(escaped)
-		}
+		bufferFromUtf8String = string => bufferFromUtf8EscapedString(escapeUtf8(string))
+		bufferToUtf8String   = buffer => unescapeUtf8(bufferToUtf8EscapedString(buffer))
 	}
 
+	// BASE64
+	// String needs to be escaped to UTF8 befor btoa() or after atob().
+	// NOTE: btoa('č') throws error but 'č' encodes as 'Ä' or [196, 141]
+	//       which can be btoa'd.
+	bufferFromBase64String = string => bufferFromUtf8EscapedString(atob(string))
+	bufferToBase64String   = buffer => btoa(bufferToUtf8EscapedString(buffer))
+
 	// HEX
-	bufferFromHex = string => {
+	bufferFromHexString = string => {
 		var buffer = new Uint8Array(string.length / 2)
 		var i, b
 		for (i = 0, b = 0; i < string.length; i += 2, b++)
 			buffer[b] = parseInt(string.slice(i, i + 2), 16)
 		return buffer
 	}
-	bufferToStringHex = buffer => {
+	bufferToHexString = buffer => {
 		var string = ''
 		for (var i = 0; i < buffer.length; i++)
 			string += buffer[i].toString(16).padStart(2, '0')
 		return string
-	}
-
-	// BASE64
-	bufferFromBase64 = string => {
-		var raw = window.atob(string)
-		console.log(string, raw)
-		var rawLength = raw.length
-		var buffer = new Uint8Array(raw.length)
-		for (var i = 0; i < rawLength; i++)
-			buffer[i] = raw.charCodeAt(i)
-		return buffer
-	}
-	bufferToStringBase64 = buffer => {
-		// converts buffer into UTF8 string that can be passed int btoa.
-		// NOTE: btoa('č') throws error but 'č' encodes as 'Ä' or [196, 141]
-		//       which can be btoa'd.
-		return btoa(String.fromCharCode(...buffer))
 	}
 
 	// Shim of Buffer.from(data, encoding)
@@ -134,18 +115,18 @@ if (Buffer) {
 			return new Uint8Array(data)
 		} else {
 			switch (encoding) {
-				case 'hex':    return bufferFromHex(data)
-				case 'utf8':   return bufferFromUtf8(data)
-				case 'base64': return bufferFromBase64(data)
+				case 'hex':    return bufferFromHexString(data)
+				case 'utf8':   return bufferFromUtf8String(data)
+				case 'base64': return bufferFromBase64String(data)
 			}
 		}
 	}
 	// Shim of buffer.to(encoding)
 	bufferToString = (buffer, encoding = 'utf8') => {
 		switch (encoding) {
-			case 'hex':    return bufferToStringHex(buffer)
-			case 'utf8':   return bufferToStringUtf8(buffer)
-			case 'base64': return bufferToStringBase64(buffer)
+			case 'hex':    return bufferToHexString(buffer)
+			case 'utf8':   return bufferToUtf8String(buffer)
+			case 'base64': return bufferToBase64String(buffer)
 		}
 	}
 
@@ -165,14 +146,26 @@ export function bufferFromInt(int, bytes) {
 
 
 
+// helper function that converts UTF8 encoded strings to buffer
+export function bufferFromUtf8EscapedString(string) {
+	var {length} = string
+	var buffer = new Uint8Array(length)
+	for (var i = 0; i < length; i++)
+		buffer[i] = string.charCodeAt(i)
+	return buffer
+}
+export function bufferToUtf8EscapedString(buffer) {
+	return String.fromCharCode(...buffer)
+}
+
 // TODO: Figure out a way to use this UTF8 escaping
 
 // converts 'ཨ' into 'à½¨', 'í' into 'Ã', 'ž' into 'Å¾'
-export function encodeUtf8(rawString) {
+export function escapeUtf8(rawString) {
 	return unescape(encodeURIComponent(rawString))
 }
 
 // converts 'à½¨' into 'ཨ', 'Ã' into 'í', 'Å¾' into 'ž'
-export function decodeUtf8(escapedString) {
+export function unescapeUtf8(escapedString) {
 	return decodeURIComponent(escape(escapedString))
 }

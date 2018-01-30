@@ -1,10 +1,10 @@
 import {SombraTransform} from './SombraTransform.mjs'
-import {Utf8} from './encodings-utf8.mjs'
+//import {Utf8} from './encodings-utf8.mjs'
 import {Base64} from './encodings-base64.mjs'
 import {Bin, Oct, Dec, Hex} from './encodings-numeric.mjs'
 import {} from './encodings-entity.mjs'
 
-export * from './encodings-utf8.mjs'
+//export * from './encodings-utf8.mjs'
 export * from './encodings-base64.mjs'
 export * from './encodings-numeric.mjs'
 export * from './encodings-entity.mjs'
@@ -18,7 +18,7 @@ export * from './encodings-entity.mjs'
 function getEncodingConstructor(encoding) {
 	switch (encoding) {
 		case 'utf-8':
-		case 'utf8':   return Utf8
+		//case 'utf8':   return Utf8
 		case 'base64': return Base64
 		case 'hex':    return Hex
 		case 'dec':    return Dec

@@ -1,4 +1,4 @@
-import {bufferFromUtf8, bufferAllocUnsafe, bufferFrom} from './node-builtins.mjs'
+import {bufferFromUtf8String, bufferAllocUnsafe, bufferFrom} from './node-builtins.mjs'
 import {platform} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
 
@@ -38,7 +38,7 @@ export class NumericEncoding extends SombraTransform {
 			array = array.map(num => prefix + num)
 		if (postfix)
 			array = array.map(num => postfix + num)
-		return bufferFromUtf8(array.join(separator))
+		return bufferFromUtf8String(array.join(separator))
 	}
 
 	static encodeString(buffer, separator = ' ') {

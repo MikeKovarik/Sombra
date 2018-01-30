@@ -1,7 +1,10 @@
 ﻿import {Transform, bufferFrom} from './node-builtins.mjs'
-import {nodeCrypto, webCrypto, platform} from './util.mjs'
-import {Utf8, Hex} from './encodings.mjs'
+import {nodeCrypto, webCrypto, platform, createApiShortcut} from './util.mjs'
+import {SombraTransform} from './SombraTransform.mjs'
 
+
+// TODO: extend from SombraTransform so everything works
+//       - do not just copy paste methods, but apply descriptors (due to getters/setters)
 
 // Imports or shims Node crypto Hash class that's used in crypto.createHash() factory function.
 var Hash = nodeCrypto ? nodeCrypto.Hash : class Hash extends Transform {
@@ -9,39 +12,16 @@ var Hash = nodeCrypto ? nodeCrypto.Hash : class Hash extends Transform {
 	// TODO: Remove this class after fully migrating functionality to SombraTransform.
 	//       Then migrate to it and make sure .encode() works properly.
 
-	// Calculates the digest of all of the data passed to be hashed (using the .update() method).
-	// If encoding is provided a string will be returned; otherwise a Buffer is returned.
-	// The encoding can be 'hex', 'latin1' or 'base64'.
-	digest(encoding) {
-		// todo
-		var hashed = this.__chunks
-		if (encoding) {}
-		return finalizeEncoding(buffer, encoding)
-	}
-
-	// Updates the hash content with the given data, the encoding of which is given in inputEncoding and
-	// can be 'utf8', 'ascii' or 'latin1'. If encoding is not provided, and the data is a string,
-	// an encoding of 'utf8' is enforced. If data is a Buffer, TypedArray, or DataView, then inputEncoding is ignored.
-	update(chunk, inputEncoding) {
-		// todo
-		if (inputEncoding)
-			chunk = bufferFrom(chunk, inputEncoding)
-		this.__chunks = this.__chunks || []
-		this.__chunks.push(chunk)
-	}
-
 }
+
+// TODO
+//Object.getOwnPropertyDescriptors(SombraTransform)
+//Object.getOwnPropertyDescriptors(SombraTransform.prototype)
 
 
 export class SombraHash extends Hash {
 
-	static get chars() {
-		return this.size / 4
-	}
-
-	static get bytes() {
-		return this.size / 8
-	}
+	defaultEncoding = 'hex'
 
 	static validate(data) {
 		if (typeof data === 'string') {
@@ -50,16 +30,6 @@ export class SombraHash extends Hash {
 		} else {
 			return data.length === this.bytes
 		}
-	}
-
-	encode(buffer) {
-		return this.constructor.encode(buffer)
-	}
-
-	static async hash(string) {
-		var buffer = Utf8.decode(string)
-		buffer = await this.encode(buffer)
-		return Hex.toString(buffer)
 	}
 
 }
@@ -156,11 +126,17 @@ export class Md5 extends Sha {
 }
 
 
-export var sha1   = Sha1.hash.bind(Sha1)
-export var sha256 = Sha256.hash.bind(Sha256)
-export var sha384 = Sha384.hash.bind(Sha384)
-export var sha512 = Sha512.hash.bind(Sha512)
-export var md5    = Md5.hash.bind(Md5)
+// TODO: extend from SombraTransform so everything works
+//export var sha1   = createApiShortcut(Sha1)
+//export var sha256 = createApiShortcut(Sha256)
+//export var sha384 = createApiShortcut(Sha384)
+//export var sha512 = createApiShortcut(Sha512)
+//export var md5    = createApiShortcut(Md5)
+export var sha1   = {}
+export var sha256 = {}
+export var sha384 = {}
+export var sha512 = {}
+export var md5    = {}
 
 
 function getHashConstructor(name) {
