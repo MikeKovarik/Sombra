@@ -9,6 +9,8 @@ export * from './checksums.mjs'
 export * from './hashes.mjs'
 export * from './ciphers.mjs'
 export * from './node-builtins.mjs'
+export * from './util-buffer.mjs'
+export * from './util-utf.mjs'
 /*
 export * from './util.mjs'
 export * from './ciphers.mjs'
