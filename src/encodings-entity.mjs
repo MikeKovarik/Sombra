@@ -1,5 +1,5 @@
 import {bufferFrom, bufferToString} from './util-buffer.mjs'
-import {getCodePoints, isSurrogate, codePointToSurrogatePair} from './util-utf.mjs'
+import {getCodePoints, fromCodePoint} from './util-utf.mjs'
 import {createApiShortcut} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
 import {ENTITY} from './util-tables.mjs'
@@ -17,12 +17,10 @@ export class EntityTransform extends SombraTransform {
 		var {prefix, postfix, radix, uppercase, zeroPadded} = options
 		if (typeof chunk !== 'string')
 			chunk = bufferToString(chunk)
-		console.log('EntityTransform _encode', chunk)
 		// Encoded output string
 		var outputString = getCodePoints(chunk)
 			.map(code => this._encodeCharacter(code, options))
 			.join('')
-		console.log('outputString', outputString)
 		return outputString
 	}
 	
@@ -39,11 +37,9 @@ export class EntityTransform extends SombraTransform {
 		var {prefix, postfix} = options
 		if (typeof chunk !== 'string')
 			chunk = bufferToString(chunk)
-		console.log('EntityTransform _decode', chunk)
 		var remainder = chunk
 		var prefixIndex
 		var sections = []
-		console.log('prefix', prefix)
 		// TODO: make this work with partial entities
 		while ((prefixIndex = remainder.indexOf(prefix)) !== -1) {
 			if (prefixIndex > 0) {
@@ -68,7 +64,6 @@ export class EntityTransform extends SombraTransform {
 			sections.push(decoded)
 			remainder = remainder.slice(entityEndIndex)
 		}
-		console.log('sections', sections)
 		return sections.join('')
 	}
 
@@ -80,17 +75,9 @@ export class EntityTransform extends SombraTransform {
 			var parsed = entity.slice(prefix.length)
 		// Check if the charcode is single character or special unicode (usually emoji) that takes two
 		// characters (4 bytes). And stringify the charcode properly if so.
-		return TODOchange(parseInt(parsed, radix))
+		return fromCodePoint(parseInt(parsed, radix))
 	}
 
-}
-
-function TODOchange(codePoint) {
-	// TODO: this could be function on its own, part of util-utf.mjs
-	if (isSurrogate(codePoint))
-		return String.fromCharCode(...codePointToSurrogatePair(codePoint))
-	else
-		return String.fromCharCode(codePoint)
 }
 
 
@@ -142,7 +129,6 @@ export class HtmlEscaper extends EntityTransform {
 	_encode(chunk) {
 		if (typeof chunk !== 'string')
 			chunk = bufferToString(chunk)
-		console.log('html _encode', chunk)
 		// NOTE: All named entities are of characters bellow charcode 9000,
 		//       meaning they only take one byte (and one actual character)
 		//       so bracket notation can be used to compare single characters
@@ -154,12 +140,10 @@ export class HtmlEscaper extends EntityTransform {
 			var entity = ENTITY.get(char)
 			output += entity ? `&${entity};` : char
 		}
-		console.log('output', output)
 		return output
 	}
 
 	_decodeEntity(string) {
-		console.log('html _decodeEntity')
 		var entity = string.slice(1, -1)
 		// return string character (of the named entity)
 		return ENTITY.get(entity)

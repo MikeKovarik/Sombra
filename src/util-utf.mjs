@@ -19,8 +19,7 @@ export function unescapeUtf8(escapedString) {
 
 // Detects if the character (its code) is standalone character or member of surrogate pair (special character).
 export function isSurrogate(charCode) {
-	return isSurrogateHigh(charCode)
-		|| isSurrogateLow(charCode)
+	return charCode > 0xFFFF
 }
 
 // First code unit of a surrogate pair is in the range from 0xD800 to 0xDBFF, and is called a high surrogate.
@@ -102,6 +101,10 @@ export function bufferToCharCodes(buffer) {
 export function bufferToCodePoints(buffer) {
 	return String.fromCodePoint(...buffer)
 }
-//function fromCodePoint(code) {
-//    return code < 0x10000 ? String.fromCharCode(code) : String.fromCodePoint(code);
-//}
+
+export function fromCodePoint(codePoint) {
+	if (isSurrogate(codePoint))
+		return String.fromCodePoint(codePoint)
+	else
+		return String.fromCharCode(codePoint)
+}
