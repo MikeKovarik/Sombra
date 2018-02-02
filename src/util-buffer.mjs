@@ -1,5 +1,5 @@
 import {Transform, Buffer} from './node-builtins.mjs'
-import {isSurrogate, escapeUtf8, unescapeUtf8, encodeUtf8String, bufferToCharCodes} from './util-utf.mjs'
+import {escapeUtf8, unescapeUtf8, encodeUtf8String, bufferToCharCodes} from './util-utf.mjs'
 
 
 // Custom functions that map to Buffer.alloc(), Bufer.from(), buffer.toString() if Buffer class is present,
@@ -44,15 +44,17 @@ if (Buffer) {
 
 	bufferConcat = buffers => {
 		buffers = buffers.filter(buffer => buffer && buffer.length > 0)
-		var size = buffers.reduce((sum, item) => sum + item.length, 0)
+		var size = buffers.reduce((sum, buffer) => sum + buffer.length, 0)
 		var output = new Uint8Array(size)
 		if (size === 0) return output
-		var previousItem = buffers.shift()
-		output.set(previousItem)
-		var currentItem
+		var buffer = buffers.shift()
+		var cursor = buffer.length
+		output.set(buffer)
+		var currentbuffer
 		while (buffers.length) {
-			output.set(buffers[0], previousItem.length)
-			previousItem = buffers.shift()
+			buffer = buffers.shift()
+			output.set(buffer, cursor)
+			cursor += buffer.length
 		}
 		return output
 	}
@@ -65,7 +67,7 @@ if (Buffer) {
 		bufferFromUtf16String = string => encoder.encode(string)
 		bufferToUtf16String   = buffer => decoder.decode(buffer)
 	} else {
-		// Shim for decoding/encoding UTF8.
+		// Shim for encoding UTF16 string into UTF8 buffer or vice versa.
 		bufferFromUtf16String = string => encodeUtf8String(escapeUtf8(string))
 		bufferToUtf16String   = buffer => unescapeUtf8(bufferToCharCodes(buffer))
 	}
