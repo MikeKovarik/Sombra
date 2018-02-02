@@ -9,10 +9,9 @@ if (isBrowser) {
 }
 var assert = chai.assert
 
-var {bufferFrom, bufferToString} = sombra
+var {bufferFrom, bufferToString, bufferConcat} = sombra
 
-// TODO: Run the tests in browser without bundled 'buffer' module.
-//       Let sombra work with Uint8Array only.
+var asyncTimeout = (timeout = 0) => new Promise(resolve => setTimeout(resolve, timeout))
 
 function promisifyStream(stream) {
 	return new Promise((resolve, reject) => {
@@ -22,22 +21,6 @@ function promisifyStream(stream) {
 		stream.on('end', err => reject(err))
 	})
 }
-
-var fixtures = {
-	0: bufferFrom(''),
-	1: bufferFrom([0x00]),
-	2: bufferFrom([0xff]),
-	3: bufferFrom('a'),
-	4: bufferFrom('hello'),
-	5: bufferFrom('Avocados are useless.'),
-	6: bufferFrom('💀'),
-	7: bufferFrom('cdF0§)ú.g9-ř;°á´$*6💀'),
-	8: bufferFrom('</div>'),
-}
-
-
-
-var asyncPromise = (timeout = 0) => new Promise(resolve => setTimeout(resolve, timeout))
 
 function createReadStream() {
 	var inputStream = new stream.Readable
@@ -95,6 +78,42 @@ function createClassSuite(Class, args = [], results, mode = 'encode') {
 		assert.deepEqual(await Class.convert(from, ...args), to)
 	}))
 
+	it(`(new ${Class.name}(${argList})).update() & .digest()` + subName, forEach(async (from, to) => {
+		var testedStream = new Class(...args)
+		var remainder = from
+		var killswitch = 5
+		//console.log('--------------------------------------------------------')
+		//console.log(from, bufferToString(from))
+		//console.log(Array.from(from).map(n => n.toString(2)))
+		while (remainder.length) {
+			var chunk = remainder.slice(0, 5)
+			remainder = remainder.slice(5)
+			testedStream.update(chunk)
+			if (killswitch-- === 0)
+				assert.equal('kill', 'switch')
+		}
+		var result = testedStream.digest()
+		//console.log('result', result, bufferToString(result))
+		//console.log('epectd', to, bufferToString(to))
+		assert.deepEqual(result, to)
+	}))
+
+	if (stream) {
+		it(`(new (${argList})).pipe() stream` + subName, forEach(async (from, to) => {
+			var testedStream = new Class(...args)
+			var inputStream = createReadStream()
+			var remainder = from
+			while (remainder.length) {
+				await asyncTimeout(5)
+				inputStream.push(remainder.slice(0, 5))
+				remainder = remainder.slice(5)
+			}
+			inputStream.push(null)
+			inputStream.pipe(testedStream)
+			assert.deepEqual(await promisifyStream(testedStream), to)
+		}))
+	}
+
 }
 
 
@@ -116,6 +135,12 @@ describe('utilities', () => {
 		assert.deepEqual(sombra.bufferFromInt(0xABCDEF56, 4), bufferFrom('ABCDEF56', 'hex'))
 	})
 
+	// TODO. UTF8/UTF16 escaping
+	/*
+	骨 = [0xE9, 0xAA, 0xA8] = 0x9AA8
+	💀 = [0xF0, 0x9F, 0x92, 0x80] = 0xD83D 0xDC80 = 0x1F480
+	*/
+
 })
 
 describe('buffer shim', () => {
@@ -136,6 +161,7 @@ describe('buffer shim', () => {
 	})
 	it('Buffer from string (unicode)', async () => {
 		assert.deepEqual(bufferFrom('☢'), bufferFrom([0xE2, 0x98, 0xA2]))
+		assert.deepEqual(bufferFrom('骨'), bufferFrom([0xE9, 0xAA, 0xA8]))
 	})
 	it('Buffer to string', async () => {
 		assert.deepEqual(bufferToString(bufferFrom([97, 98, 0xC5, 0x99, 0xE2, 0x98, 0xA2])), 'abř☢')
@@ -175,6 +201,32 @@ describe('buffer shim', () => {
 	it('Buffer to base64 (advanced)', async () => {
 		assert.deepEqual(bufferToString(bufferFrom('avocados are useless'), 'base64'), 'YXZvY2Fkb3MgYXJlIHVzZWxlc3M=')
 	})
+
+	it('concat', async () => {
+		var buffers = [
+			new Uint8Array([226, 130, 172]),
+			new Uint8Array([226, 153, 166]),
+			new Uint8Array([240, 159, 146, 128]),
+		]
+		assert.deepEqual(bufferConcat(buffers), bufferFrom([226, 130, 172, 226, 153, 166, 240, 159, 146, 128]))
+	})
+
+})
+
+describe('utf8 tools', () => {
+
+	it('getCodePoints() corrupted', async () => {
+		var incompleteBuffer = new Uint8Array([166, 240, 159, 146, 128])
+		var incompleteString = bufferToString(incompleteBuffer)
+		assert.deepEqual(sombra.getCodePoints(incompleteBuffer), [65533, 128128])
+		assert.deepEqual(sombra.getCodePoints(incompleteString), [65533, 128128])
+	})
+
+	// TODO. UTF8/UTF16 escaping
+	/*
+	骨 = [0xE9, 0xAA, 0xA8] = 0x9AA8
+	💀 = [0xF0, 0x9F, 0x92, 0x80] = 0xD83D 0xDC80 = 0x1F480
+	*/
 
 })
 
@@ -248,22 +300,22 @@ describe('encodings', () => {
 
 		// Bin is always zero padded, no matter the separator. Also spaced by default
 		createSuite('bin', [
-			['',      bufferFrom('')],
+			['',      ''],
 		])
 		createSuite('bin', [''], [
-			[[0x00],  bufferFrom('00000000')],
-			[[0xff],  bufferFrom('11111111')],
-			['hello', bufferFrom('0110100001100101011011000110110001101111')],
-			['💀',    bufferFrom('11110000100111111001001010000000')],
+			[[0x00],  '00000000'],
+			[[0xff],  '11111111'],
+			['hello', '0110100001100101011011000110110001101111'],
+			['💀',    '11110000100111111001001010000000'],
 		])
 		// Not zero padded, no matter the separator.
 		createSuite('bin', [' '], [
-			[[0x00],  bufferFrom('00000000')],
-			['hello', bufferFrom('01101000 01100101 01101100 01101100 01101111')],
-			['💀',    bufferFrom('11110000 10011111 10010010 10000000')],
+			[[0x00],  '00000000'],
+			['hello', '01101000 01100101 01101100 01101100 01101111'],
+			['💀',    '11110000 10011111 10010010 10000000'],
 		])
 		createSuite('bin', ['-'], [
-			['hello', bufferFrom('01101000-01100101-01101100-01101100-01101111')],
+			['hello', '01101000-01100101-01101100-01101100-01101111'],
 		])
 		//it('short form decoding', async () => {
 		//	assert.deepEqual(sombra.Bin.decodeString('00000011 11111111', ' '), bufferFrom('03ff', 'hex'))
@@ -349,7 +401,7 @@ describe('encodings', () => {
 			//['</div>', '&#60;/div&#62;'], // TODO - advanced in place en/decoding
 		])
 
-		createSuite('ncrhex', [
+		createSuite('ncrhex', [ // TODO: reenable
 			['a',    '&#x61;'],
 			['Σ',    '&#x3a3;'],
 			['💀',   '&#x1f480;'],
@@ -378,7 +430,12 @@ describe('encodings', () => {
 
 		createSuite('html', [
 			['</div>', '&lt;/div&gt;'],
+			['foo</div>bar', 'foo&lt;/div&gt;bar'],
+			['č</div>💀', 'č&lt;/div&gt;💀'],
 		], () => {
+			it('decodes empty entities', async () => {
+				assert.deepEqual(sombra.html.Decoder.convert(bufferFrom('&lt;/div&;')), bufferFrom('</div'))
+			})
 			//it('decodes named and number equivalents', async () => {
 			//	assert.deepEqual(sombra.html.Decoder.convert(bufferFrom('&lt;&#60;&#x3c;')), bufferFrom('<<'))
 			//})

@@ -19,5 +19,8 @@
     "mocha": "^4.1.0",
     "rollup": "^0.51.7",
     "rollup-plugin-babel": "^3.0.3"
+  },
+  "devDependencies": {
+    "benchmark": "^2.1.4"
   }
 }

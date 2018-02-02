@@ -258,12 +258,12 @@ export const ENTITY_TABLE = {
 
 export const ENTITY = new Map
 
-for (var [name, code] of Object.entries(ENTITY_TABLE)) {
+for (var [name, codePoint] of Object.entries(ENTITY_TABLE)) {
 	// Translate entity names to string characters
-	ENTITY.set(name, String.fromCodePoint(code))
+	ENTITY.set(name, String.fromCodePoint(codePoint))
 	// Translate codes or chars (string of single symbol) to entity names
-	ENTITY.set(String.fromCodePoint(code), name)
-	ENTITY.set(code, name)
+	ENTITY.set(String.fromCodePoint(codePoint), name)
+	ENTITY.set(codePoint, name)
 }
 
 

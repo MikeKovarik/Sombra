@@ -1,71 +1,51 @@
-import {Transform, bufferFrom, bufferToString, bufferConcat} from './node-builtins.mjs'
+import {Transform} from './node-builtins.mjs'
+import {bufferFrom, bufferToString, bufferConcat} from './util-buffer.mjs'
 
 
+// TODO: take another stab at making the core functionality state-less so _encode() and _decode()
+//       can be called from static methods without having to instantiate. Options object is already
+//       being passed through argument. Next could be 'lastValue' with so-far transformed chunks (or
+//       current value in case of checksums) and 'state' for passing things like 'lastChunk' that would
+//       otherwise end up in instance as this.lastChunk
 export class SombraTransform extends Transform {
 
 	constructor(options) {
 		super()
-
-		// Apply defaults to the arguments (if any defaults are defined).
-		/*if (this.constructor.args) {
-			this.args = defaults.map((options, i) => {
-				var value = custom[i]
-				if (value === undefined) {
-					value = options.default
-				} else {
-					if (options.min !== undefined) value = Math.min(options.min, value)
-					if (options.max !== undefined) value = Math.max(options.max, value)
-					if (options.type === 'number') value = parseFloat(value)
-				}
-				return value
-			})
-		}*/
-
-
+		// Apply user's options and class' default options.
 		var defaultOptions = {}
 		var Super = this.constructor
 		for (var key in Super)
 			if (typeof Super[key] !== 'function')
 				defaultOptions[key] = Super[key]
-
 		Object.assign(this, defaultOptions, options)
-
-		// TODO
-		if (this.continuous) {
-			// Endless passthrough stream that converts each chunk as is
-			// without slicing or storing it in order to wait for another part.
-			// Suitable for binding to text fields.
-			// Unsuitable for converting files.
-		} else {
-			// Sequential processing of possibly chunked but ordered and connected data.
-			// Chunks could be further sliced and stored (and their processing delayed)
-			// Until next chunk or until the very end of the stream.
-			// That is to safely handle e.g. html entities that are split in half in two chunks.
-		}
-
+		this.encoder = !this.decoder
+		this.decoder = !this.encoder
 		// Used to store raw chunks for defalt _update/_digest set of functions in algorithms that are not streamable.
 		// _update and _digest can be overwritten by inheritor in which case _rawChunks is useless because _update will
 		// be encoding each chunk on the fly. 
 		this._rawChunks = []
 		// Used for .digest/.update to handle returned encoded chunks from _update/_digest.
 		this._covertedChunks = []
-		if (this._init)
-			this._init(options)
 	}
 
 	// default implementation to be overwritten where needed
-	// TODO: endless/continuous mode
 	_update(chunk, options) {
-		console.log('_update')
-		if (this.continuous)
-			return this._convert(chunk, options)
-		else
+		if (this.staggered) {
+			// Sequential processing of possibly chunked but ordered and connected data.
+			// Chunks could be further sliced and stored (and their processing delayed)
+			// Until next chunk or until the very end of the stream.
+			// That is to safely handle e.g. html entities that are split in half in two chunks.
 			this._rawChunks.push(chunk)
+		} else {
+			// Endless passthrough stream that converts each chunk as is
+			// without slicing or storing it in order to wait for another part.
+			// Suitable for binding to text fields.
+			// Unsuitable for converting files.
+			return this._convert(chunk, options)
+		}
 	}
 
-	// TODO: endless/continuous mode
 	_digest(options) {
-		console.log('_digest')
 		// Only proceed if there is something to digest.
 		if (this._rawChunks.length === 0)
 			return
@@ -78,10 +58,10 @@ export class SombraTransform extends Transform {
 	}
 
 	_convert(buffer, options) {
-		if (this.encoder)
-			return this._encode(buffer, options)
-		else if (this.decoder)
+		if (this.decoder)
 			return this._decode(buffer, options)
+		else
+			return this._encode(buffer, options)
 	}
 
 	// Continual update()/digest() API for streaming sources (other than Node streams).
@@ -96,9 +76,7 @@ export class SombraTransform extends Transform {
 	update(chunk, encoding = 'utf8') {
 		chunk = bufferFrom(chunk, encoding)
 		// Transform the chunk and store it for .digest() (end).
-		var converted = this._update(chunk, this)
-		if (converted)
-			this._covertedChunks.push(converted)
+		this._covertedChunks.push(this._update(chunk, this))
 		// Maintain chaniability.
 		return this
 	}
@@ -107,14 +85,20 @@ export class SombraTransform extends Transform {
 	// If encoding is provided a string will be returned; otherwise a Buffer is returned.
 	// The encoding can be 'hex', 'latin1' or 'base64'.
 	digest(encoding) {
+		//console.log('digest')
 		// Call underlying digest function and add the result to other chunks.
-		var converted = this._digest(this)
-		if (converted)
-			this._covertedChunks.push(converted)
+		try {
+		this._covertedChunks.push(this._digest(this))
+	} catch(err) {console.error(err)}
 		// Merge all previously collected chunks into single buffer.
-		var chunks = this._covertedChunks.map(chunk => bufferFrom(chunk))
+		//console.log('this._covertedChunks', this._covertedChunks)
+		var chunks = this._covertedChunks
+			.filter(chunk => chunk)
+			.map(chunk => bufferFrom(chunk))
+		//console.log('chunks', chunks)
 		this._covertedChunks = []
 		var result = bufferConcat(chunks)
+		//console.log('result', result)
 		// Always return buffer unless encoding is specified.
 		if (encoding)
 			return bufferToString(result, encoding)
@@ -127,29 +111,34 @@ export class SombraTransform extends Transform {
 	_transform(chunk, encoding = 'utf8', cb) {
 		chunk = bufferFrom(chunk, encoding)
 		// Transform the chunk and store it for flush (end of stream).
-		var converted = this._update(chunk, this)
-		if (converted)
-			this.push(converted)
+		this.push(this._update(chunk, this))
 		cb()
 	}
 
 	_flush(cb) {
-		var converted = this._digest(this)
-		if (converted)
-			this.push(converted)
+		this.push(this._digest(this))
 		cb()
 	}
 
+	// BITS, BYTES AND CHAR SIZE
+
+	static set bits(val)  {this._bits = val}
+	static set chars(val) {this._bits = val * 4}
+	static set bytes(val) {this._bits = val * 8}
+
+	set bits(val)  {this._bits = val}
+	set chars(val) {this._bits = val * 4}
+	set bytes(val) {this._bits = val * 8}
+
+	static get bits()  {return this._bits ? this._bits     : 0}
+	static get chars() {return this._bits ? this._bits / 4 : 0}
+	static get bytes() {return this._bits ? this._bits / 8 : 0}
+
+	get bits()  {return this._bits ? this._bits     : this.constructor._bits}
+	get chars() {return this._bits ? this._bits / 4 : this.constructor._bits}
+	get bytes() {return this._bits ? this._bits / 8 : this.constructor._bits}
+
 	// HELPER FUNCTIONS
-
-	static set chars(newVal) {this._chars = newVal}
-	static set bytes(newVal) {this._bytes = newVal}
-	static set bits(newVal)  {this._bits  = newVal}
-
-	static get chars() {return this._chars || this.size / 4}
-	static get bytes() {return this._bytes || this.size / 8}
-	static get bits()  {return this._bits  || this.size}
-
 
 	convert(data) {
 		return this
@@ -171,7 +160,7 @@ export class SombraTransform extends Transform {
 	convertToString(data, options) {
 		return this
 			.update(data)
-			.digest(this.defaultEncoding || 'utf8')
+			.digest(this.defaultEncoding || this.constructor.defaultEncoding || 'utf8')
 	}
 	static convertToString(data, options) {
 		return (new this(options)).convertToString(data)

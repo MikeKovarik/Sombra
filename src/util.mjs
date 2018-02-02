@@ -23,22 +23,25 @@ export function iterator() {
 	}
 }
 
-export function createApiShortcut(Class) {
-	var Encoder = class extends Class {
-		encoder = true
-	}
-	var Decoder = class extends Class {
-		decoder = true
+export function createApiShortcut(Class, hasDecoder) {
+	var {name} = Class
+	if (hasDecoder) {
+		var Encoder = class Encoder extends Class {encoder = true}
+		Object.defineProperty(Encoder, 'name', {value: name + 'Encoder'})
+	} else {
+		var Encoder = Class
 	}
 	var fn = Encoder.convertToString.bind(Encoder)
 	fn.Encoder = Encoder
 	fn.encode = Encoder.convert.bind(Encoder)
 	fn.encodeToString = Encoder.convertToString.bind(Encoder)
-	//if (Decoder !== false) {
+	if (hasDecoder !== false) {
+		class Decoder extends Class {decoder = true}
+		Object.defineProperty(Decoder, 'name', {value: name + 'Decoder'})
 		fn.Decoder = Decoder
 		fn.decode = Decoder.convert.bind(Decoder)
 		fn.decodeToString = Decoder.convertToString.bind(Decoder)
-	//}
+	}
 	return fn
 }
 

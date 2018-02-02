@@ -14,11 +14,53 @@ export function unescapeUtf8(escapedString) {
 	return decodeURIComponent(escape(escapedString))
 }
 
+// UTF-8
 
-// SURROGATE PAIR DETECTION AND MANIPULATION
+export function isUtf8Sequence(codeUnit) {
+	return codeUnit >= 0b10000000
+}
+export function isUtf8SequenceLead(codeUnit) {
+	return codeUnit >= 0b11000000
+}
+export function getUtf8SequenceLength(codeUnit) {
+	if (isUtf8Sequence(codeUnit)) {
+		codeUnit = codeUnit & 0b11110000
+		if (codeUnit === 0b11110000) {
+			return 4
+		} else if (codeUnit === 0b11100000) {
+			return 3
+		} else if (codeUnit >= 0b11000000) {
+			return 2
+		} else if (codeUnit >= 0b10000000) {
+			return 1
+		}
+	}
+	return 0
+}
+export function extractUtf8SequencePayload(codeUnit) {
+	return codeUnit & 0b00111111
+}
+export function extractUtf8SequenceLead(codeUnit, seqBytes = 2) {
+	switch (seqBytes) {
+		case 4: return codeUnit & 0b00001111
+		case 3: return codeUnit & 0b00011111
+		case 2: return codeUnit & 0b00111111
+		case 1: return codeUnit & 0b01111111
+	}
+}
+export function transformUtf8SequencePayload(codeUnit, bytesLeft) {
+	codeUnit = extractUtf8SequencePayload(codeUnit)
+	return codeUnit << (6 * bytesLeft)
+}
+export function transformUtf8SequenceLead(codeUnit, bytesLeft) {
+	codeUnit = extractUtf8SequenceLead(codeUnit, bytesLeft)
+	return codeUnit << (6 * bytesLeft)
+}
+
+// UTF-16 SURROGATE PAIR DETECTION AND MANIPULATION
 
 // Detects if the character (its code) is standalone character or member of surrogate pair (special character).
-export function isSurrogate(charCode) {
+export function isUtf16Surrogate(charCode) {
 	return charCode > 0xFFFF
 }
 
@@ -70,10 +112,18 @@ export function encodeUtf16String(string) {
 // 'ř'  => [348]
 // 'a'  => [97]
 export function encodeUtf32String(string) {
-	var array = getCharCodes(string)
+	var array = getCodePoints(string)
 	return new Uint32Array(array)
 }
 
+
+export function getCodeUnits(string, bits) {
+	if (bits === 32)
+		return getCodePoints(string)
+	else if (bits === 8)
+		string = escapeUtf8(string)
+	return getCharCodes(string)
+}
 
 export function getCharCodes(string, buffer = []) {
 	for (var i = 0; i < string.length; i++)
@@ -81,16 +131,87 @@ export function getCharCodes(string, buffer = []) {
 	return buffer
 }
 
-export function getCodePoints(string, buffer = []) {
-	var buffer = []
+export function getCodePoints(chunk, outputBuffer) {
+	if (typeof chunk === 'string')
+		return getCodePointsFromString(chunk, outputBuffer)
+	else
+		return getCodePointsFromUtf8Buffer(chunk, outputBuffer)
+}
+
+export function getCodePointsFromString(string, outputBuffer = []) {
 	var code
 	for (var i = 0; i < string.length; i++) {
 		code = string.codePointAt(i)
-		if (isSurrogate(code))
+		if (isUtf16Surrogate(code))
 			i++
-		buffer.push(code)
+		outputBuffer.push(code)
 	}
-	return buffer
+	return outputBuffer
+}
+
+export function getCodePointsFromUtf8Buffer(buffer, outputBuffer) {
+	var codeUnit
+	var seqBytesLeft = 0
+	var seqCodePoint = 0
+	var outputBuffer = []
+	for (var i = 0; i < buffer.length; i++) {
+		codeUnit = buffer[i]
+		if (seqBytesLeft === 0) {
+			// This codepoint is not part of any previous sequence.
+			// It could be simple 0-127 ASCII character, beginning of new sequence
+			// or corrupted middle of sequence which we couldn't read leading byte for
+			let header = codeUnit & 0b11000000
+			if (header === 0b10000000) {
+				// Corrupted sequence. Header 10 suggests this byte is continuation of sequence
+				// but having seqBytesLeft equal to 0 means we're not reading one currently.
+				outputBuffer.push(65533)
+			} else if (!isUtf8SequenceLead(codeUnit)) {
+				// Normal non sequence codeunit that is a codepoint itself.
+				outputBuffer.push(codeUnit)
+			} else if (header !== 0) {
+				// Beginning of new sequence. Header is non zero (either 11, 111 or 1111). 
+				seqBytesLeft = getUtf8SequenceLength(codeUnit)
+				// Remove the sequence headers (could be firt 2 to 4 bits) to get encoded value in the leading byte
+				// and shift it by the ammount of bytes in the sequence left to be read * 6b
+				seqCodePoint = extractUtf8SequenceLead(codeUnit, seqBytesLeft) << (6 * --seqBytesLeft)
+			}
+		} else {
+			seqBytesLeft--
+			// Remove the first two bits of the continuation header to get the value encoded in the next 6 bits.
+			// Shift it to proper position to make room for remaining bytes and merge it into the previously read.
+			seqCodePoint |= (codeUnit & 0b00111111) << (6 * seqBytesLeft)
+			// Return the codepoint if we finished reading the sequence.
+			if (seqBytesLeft === 0) {
+				outputBuffer.push(seqCodePoint)
+				seqCodePoint = 0
+				seqBytesLeft = 0
+			}
+		}
+	}
+	return outputBuffer
+}
+
+
+export function sanitizeUtf8BufferChunk(chunk) {
+	var i = chunk.length
+	var codeUnit
+	var incompleteChunk
+	while (i--) {
+		codeUnit = chunk[i]
+		if (isUtf8Sequence(codeUnit)) {
+			if (isUtf8SequenceLead(codeUnit)) {
+				var sequenceBytes = getUtf8SequenceLength(codeUnit)
+				if (i + sequenceBytes > chunk.length) {
+					incompleteChunk = chunk.slice(i)
+					chunk = chunk.slice(0, i)
+					break
+				}
+			}
+		} else {
+			break
+		}
+	}
+	return [chunk, incompleteChunk]
 }
 
 
@@ -103,7 +224,7 @@ export function bufferToCodePoints(buffer) {
 }
 
 export function fromCodePoint(codePoint) {
-	if (isSurrogate(codePoint))
+	if (isUtf16Surrogate(codePoint))
 		return String.fromCodePoint(codePoint)
 	else
 		return String.fromCharCode(codePoint)
