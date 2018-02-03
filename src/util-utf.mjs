@@ -14,7 +14,9 @@ export function unescapeUtf8(escapedString) {
 	return decodeURIComponent(escape(escapedString))
 }
 
-// UTF-8
+// ----------------------------------------------------------------------------
+// ---------- UTF-8 -----------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 export function isUtf8Sequence(codeUnit) {
 	return codeUnit >= 0b10000000
@@ -48,16 +50,40 @@ export function extractUtf8SequenceLead(codeUnit, seqBytes = 2) {
 		case 1: return codeUnit & 0b01111111
 	}
 }
-export function transformUtf8SequencePayload(codeUnit, bytesLeft) {
-	codeUnit = extractUtf8SequencePayload(codeUnit)
-	return codeUnit << (6 * bytesLeft)
-}
-export function transformUtf8SequenceLead(codeUnit, bytesLeft) {
-	codeUnit = extractUtf8SequenceLead(codeUnit, bytesLeft)
-	return codeUnit << (6 * bytesLeft)
+
+// Converts single codepoint (of any size and value) into UTF-8 encoded array of 8b code units (UTF-8 sequence)
+export function codePointToUtf8Sequence(codePoint) {
+	if (codePoint < 0b10000000)
+		return [codePoint]
+	var bytes = 0
+	var payloads = []
+	while (codePoint !== 0) {
+		payloads.unshift(codePoint & 0b00111111)
+		codePoint = codePoint >>> 6
+	}
+	var bytes = payloads.length
+	var leadPayload = payloads.shift()
+	var codeUnits = payloads.map(payload => payload | 0b10000000)
+	var leadByteMask   = ((2 ** (7 - bytes)) - 1)
+	var masked = leadPayload & leadByteMask
+	if (masked !== leadPayload) {
+		// Payload is larger than available bits in the leading byte! The payload needs to be split into another byte.
+		var trailingByte = (leadPayload & 0b00111111) | 0b10000000
+		leadPayload      = (leadPayload & 0b11000000) >>> 6 
+		codeUnits.unshift(trailingByte)
+		bytes++
+	}
+	var leadByteHeader = ((2 ** bytes) - 1) << (8 - bytes)
+	var leadByte = leadPayload |= leadByteHeader
+	codeUnits.unshift(leadByte)
+	return codeUnits
 }
 
-// UTF-16 SURROGATE PAIR DETECTION AND MANIPULATION
+
+// ----------------------------------------------------------------------------
+// ------ UTF-16 SURROGATE PAIR DETECTION AND MANIPULATION --------------------
+// ----------------------------------------------------------------------------
+
 
 // Detects if the character (its code) is standalone character or member of surrogate pair (special character).
 export function isUtf16Surrogate(charCode) {
@@ -190,7 +216,6 @@ export function getCodePointsFromUtf8Buffer(buffer, outputBuffer) {
 	}
 	return outputBuffer
 }
-
 
 export function sanitizeUtf8BufferChunk(chunk) {
 	var i = chunk.length

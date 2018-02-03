@@ -222,6 +222,13 @@ describe('utf8 tools', () => {
 		assert.deepEqual(sombra.getCodePoints(incompleteString), [65533, 128128])
 	})
 
+	it('codePointToUtf8Sequence()', async () => {
+		assert.deepEqual(sombra.codePointToUtf8Sequence(97), [97]) // a
+		assert.deepEqual(sombra.codePointToUtf8Sequence(345), [197, 153]) // ř
+		assert.deepEqual(sombra.codePointToUtf8Sequence(8364), [226, 130, 172]) // €
+		assert.deepEqual(sombra.codePointToUtf8Sequence(128128), [240, 159, 146, 128]) // 💀
+	})
+
 	// TODO. UTF8/UTF16 escaping
 	/*
 	骨 = [0xE9, 0xAA, 0xA8] = 0x9AA8
@@ -398,7 +405,6 @@ describe('encodings', () => {
 			['💀',   '&#128128;'],
 			['€♦💀', '&#8364;&#9830;&#128128;'],
 			['<>',   '&#60;&#62;'],
-			//['</div>', '&#60;/div&#62;'], // TODO - advanced in place en/decoding
 		])
 
 		createSuite('ncrhex', [ // TODO: reenable
@@ -407,7 +413,6 @@ describe('encodings', () => {
 			['💀',   '&#x1f480;'],
 			['€♦💀', '&#x20ac;&#x2666;&#x1f480;'],
 			['<>',   '&#x3c;&#x3e;'],
-			//['</div>', '&#x3c;/div&#x3e;'], // TODO - advanced in place en/decoding
 		])
 
 		createSuite('unicodeescaped', [
@@ -416,7 +421,6 @@ describe('encodings', () => {
 			['💀',   '\\u1f480'],
 			['€♦💀', '\\u20ac\\u2666\\u1f480'],
 			['<>',   '\\u3c\\u3e'],
-			//['</div>', '\\u3c/div\\u3e'], // TODO - advanced in place en/decoding
 		])
 
 		createSuite('unicode', [
@@ -425,7 +429,6 @@ describe('encodings', () => {
 			['💀',   'U+1F480'],
 			['€♦💀', 'U+20ACU+2666U+1F480'],
 			['<>',   'U+003CU+003E'],
-			//['</div>', 'U+003C/divU+003E'], // TODO - advanced in place en/decoding
 		])
 
 		createSuite('html', [
@@ -440,6 +443,21 @@ describe('encodings', () => {
 			//	assert.deepEqual(sombra.html.Decoder.convert(bufferFrom('&lt;&#60;&#x3c;')), bufferFrom('<<'))
 			//})
 		})
+
+		createSuite('percent', [
+			['</div>', '%3C%2F%64%69%76%3E'],
+			['💀',     '%F0%9F%92%80'],
+		])
+
+		createSuite('url', [
+			['</div>', '%3C/div%3E'],
+			['💀',     '%F0%9F%92%80'],
+		])
+
+		createSuite('urlComponent', [
+			['</div>', '%3C%2Fdiv%3E'],
+			['💀',     '%F0%9F%92%80'],
+		])
 
 	})
 
