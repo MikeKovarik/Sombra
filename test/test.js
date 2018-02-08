@@ -75,13 +75,16 @@ function createClassSuite(Class, args = [], results, mode = 'encode') {
 	var argList = JSON.stringify(args).slice(1, -1)
 
 	it(`.${mode}(${argList})`, forEach(async (from, to) => {
-		assert.deepEqual(await Class.convert(from, ...args), to)
+		var result = await Class.convert(from, ...args)
+		console.log('result', result, bufferToString(result))
+		console.log('epectd', to, bufferToString(to))
+		assert.deepEqual(result, to)
 	}))
 
 	it(`(new ${Class.name}(${argList})).update() & .digest()` + subName, forEach(async (from, to) => {
 		var testedStream = new Class(...args)
 		var remainder = from
-		var killswitch = 5
+		var killswitch = 10
 		//console.log('--------------------------------------------------------')
 		//console.log(from, bufferToString(from))
 		//console.log(Array.from(from).map(n => n.toString(2)))
@@ -93,8 +96,8 @@ function createClassSuite(Class, args = [], results, mode = 'encode') {
 				assert.equal('kill', 'switch')
 		}
 		var result = testedStream.digest()
-		//console.log('result', result, bufferToString(result))
-		//console.log('epectd', to, bufferToString(to))
+		console.log('result', result, bufferToString(result))
+		console.log('epectd', to, bufferToString(to))
 		assert.deepEqual(result, to)
 	}))
 
@@ -409,18 +412,34 @@ describe('encodings', () => {
 
 		createSuite('ncrhex', [ // TODO: reenable
 			['a',    '&#x61;'],
-			['Σ',    '&#x3a3;'],
-			['💀',   '&#x1f480;'],
-			['€♦💀', '&#x20ac;&#x2666;&#x1f480;'],
-			['<>',   '&#x3c;&#x3e;'],
+			['Σ',    '&#x3A3;'],
+			['💀',   '&#x1F480;'],
+			['€♦💀', '&#x20AC;&#x2666;&#x1F480;'],
+			['<>',   '&#x3C;&#x3E;'],
 		])
 
-		createSuite('unicodeescaped', [
-			['a',    '\\u61'],
-			['Σ',    '\\u3a3'],
-			['💀',   '\\u1f480'],
-			['€♦💀', '\\u20ac\\u2666\\u1f480'],
-			['<>',   '\\u3c\\u3e'],
+		createSuite('unicodeEscaped8', [
+			['a',    '\\x61'],
+			['Σ',    '\\xCE\\xA3'],
+			['💀',   '\\xF0\\x9F\\x92\\x80'],
+			['€♦💀', '\\xE2\\x82\\xAC\\xE2\\x99\\xA6\\xF0\\x9F\\x92\\x80'],
+			['<>',   '\\x3C\\x3E'],
+		])
+
+		createSuite('unicodeEscaped16', [
+			['a',    '\\u0061'],
+			['Σ',    '\\u03A3'],
+			['💀',   '\\uD83D\\uDC80'],
+			['€♦💀', '\\u20AC\\u2666\\uD83D\\uDC80'],
+			['<>',   '\\u003C\\u003E'],
+		])
+
+		createSuite('unicodeEscaped32', [
+			['a',    '\\u{61}'],
+			['Σ',    '\\u{3A3}'],
+			['💀',   '\\u{1F480}'],
+			['€♦💀', '\\u{20AC}\\u{2666}\\u{1F480}'],
+			['<>',   '\\u{3C}\\u{3E}'],
 		])
 
 		createSuite('unicode', [
@@ -608,14 +627,48 @@ describe('ciphers', () => {
 	], () => {
 		it('invalid characters throw error by default', async () => {
 			try {
-				sombra.Morse.encode(bufferFrom('řčžw'))
+				sombra.morse.encode(bufferFrom('řčžw'))
 			} catch(e) {
 				assert.exists(e)
 			}
 		})
 		it('invalid characters can be ignored, errors suppressed', async () => {
-			assert.deepEqual(sombra.Morse.encode(bufferFrom('řb'), false), bufferFrom('-...'))
+			assert.deepEqual(sombra.morse.encode(bufferFrom('řb'), false), bufferFrom('-...'))
 		})
 	})
+
+	createSuite('polybius', [
+		['a',  '11'],
+		['b',  '12'],
+		['e',  '15'],
+		['f',  '21'],
+		['i',  '24'],
+		['z',  '55'],
+		['hello', '2315313134'],
+		['avocados are useless', '1151341311143443 114215 45431531154343'],
+	], () => {
+		it('maps J as I', async () => {
+			assert.deepEqual(sombra.polybius.encodeToString('i'), '24')
+			assert.deepEqual(sombra.polybius.encodeToString('j'), '24')
+		})
+		it('maps A as C', async () => {
+			var opts = {charToSkip: 'a', skipAsChar: 'c'}
+			assert.deepEqual(sombra.polybius.encodeToString('a', opts), '12')
+			assert.deepEqual(sombra.polybius.encodeToString('b', opts), '11')
+			assert.deepEqual(sombra.polybius.encodeToString('c', opts), '12')
+			assert.deepEqual(sombra.polybius.encodeToString('d', opts), '13')
+		})
+	})
+
+	createSuite('bifid', [
+		['i',  'i'],
+		//['j',  'i'],
+		['ii', 'gt'],
+		['hello', 'fnnvd'],
+		['Avocados are useless.', 'Elaoddql tas dsbzpen.'],
+		// i and j translates as one character
+		// special characters
+		['-.§=´a', '-.§=´a'],
+	])
 
 })

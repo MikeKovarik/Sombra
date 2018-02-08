@@ -1,5 +1,7 @@
 import {SombraTransform} from './SombraTransform.mjs'
-import {bufferAlloc, bufferFrom, bufferToString} from './node-builtins.mjs'
+import {createApiShortcut} from './util.mjs'
+import {bufferAlloc, bufferFrom, bufferToString} from './util-buffer.mjs'
+import {getCodeUnits} from './util-utf.mjs'
 
 
 function shiftCharCode(code, key, shiftBy) {
@@ -9,6 +11,13 @@ function shiftCharCode(code, key, shiftBy) {
 	// get character back into the a-z range of 26
 	return (temp % 26) + shiftBy
 	//return String.fromCharCode(temp % 26 + shiftBy)
+}
+
+function isUpperCaseCode(code) {
+	return code >= 65 && code <= 90
+}
+function isLowerCaseCode(code) {
+	return code >= 97 && code <= 122
 }
 
 export class Clock extends SombraTransform {
@@ -112,9 +121,9 @@ export class Caesar extends SombraTransform {
 		return encoded
 	}
 	_encodeCharacter(code, key) {
-		if (code >= 65 && code <= 90)
+		if (isUpperCaseCode(code))
 			return shiftCharCode(code, key, 65) // upper case
-		else if (code >= 97 && code <= 122)
+		else if (isLowerCaseCode(code))
 			return shiftCharCode(code, key, 97) // lower case
 		else
 			return code
@@ -137,9 +146,9 @@ export class Atbash extends SombraTransform {
 		return encoded
 	}
 	_encodeCharacter(code) {
-		if (code >= 65 && code <= 90)
+		if (isUpperCaseCode(code))
 			return Math.abs(code - 65 - 25) + 65
-		else if (code >= 97 && code <= 122)
+		else if (isLowerCaseCode(code))
 			return Math.abs(code - 97 - 25) + 97
 		else
 			return code
@@ -152,9 +161,9 @@ export class Atbash extends SombraTransform {
 		return encoded
 	}
 	_decodeCharacter(code) {
-		if (code >= 65 && code <= 90)
+		if (isUpperCaseCode(code))
 			return Math.abs(code - 65 - 25) + 65
-		else if (code >= 97 && code <= 122)
+		else if (isLowerCaseCode(code))
 			return Math.abs(code - 97 - 25) + 97
 		else
 			return code
@@ -202,9 +211,9 @@ export class A1z26 extends SombraTransform {
 		return bufferFrom(characters)
 	}
 	_encodeCharacter(code) {
-		if (code >= 65 && code <= 90)
+		if (isUpperCaseCode(code))
 			return code - 64 // upper case
-		else if (code >= 97 && code <= 122)
+		else if (isLowerCaseCode(code))
 			return code - 96 // lower case
 		else
 			return code
@@ -313,3 +322,99 @@ export class Morse extends SombraTransform {
 	}
 
 }
+
+
+
+export class Polybius extends SombraTransform {
+
+	static charToSkip = 'j'
+	static skipAsChar = 'i'
+
+	_encode(chunk, options) {
+		// Note: polybius only accepts a-z characters that fall under ASCII range (up to 127)
+		//       so we can safely use only UTF-8 buffer or alternatively transform string to 8b code units
+		//       (effectively encoding it into UTF8 array)
+		if (typeof chunk === 'string')
+			chunk = getCodeUnits(chunk)
+		var {charToSkip, skipAsChar} = options
+		var codeToSkip = charToSkip.charCodeAt(0)
+		var skipAsCode = skipAsChar.charCodeAt(0)
+		var output = ''
+		var code
+		var base
+		var num
+		var row
+		var col
+		for (var i = 0; i < chunk.length; i++) {
+			code = chunk[i]
+			// outside the square only space can be used
+			// TODO: add option to allow more characters (commas, quotes, etc)
+			if (code === 32) {
+				output += ' '
+				continue
+			}
+			// trasform to lowercase
+			if (isUpperCaseCode(code))
+				code += 32
+			// ignore all non a-z characters
+			if (!isLowerCaseCode(code))
+				continue
+			// map the character 26th to skip
+			if (code === codeToSkip)
+				code = skipAsCode
+			base = code > codeToSkip ? 97 : 96
+			num = code - base
+			row = Math.ceil((num) / 5)
+			col = (num - 1) % 5 + 1
+			output += `${row}${col}`
+		}
+		return output
+	}
+	
+	_decode(chunk, options) {
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		// Restore last chunk if there was one.
+		if (this.lastChunk) {
+			chunk = this.lastChunk + chunk
+			this.lastChunk = undefined
+		}
+		var output = []
+		var row
+		var col
+		var code
+		var codeToSkip = options.charToSkip.charCodeAt(0)
+		for (var i = 0; i < chunk.length; i += 2) {
+			// Spaces!
+			if (chunk[i] === ' ') {
+				i--
+				output.push(32)
+				continue
+			}
+			// Prevent handling if we only have one character left (the row/col pair is split).
+			if (i + 1 >= chunk.length) {
+				this.lastChunk = chunk[i]
+				continue
+			}
+			row = parseInt(chunk[i])
+			col = parseInt(chunk[i + 1])
+			if (col && row)
+			code = (row - 1) * 5 + col + 96
+			if (code > codeToSkip)
+				code++
+			output.push(code)
+			// TODO: handle incomplete chunks
+		}
+		return bufferFrom(output)
+	}
+
+}
+
+
+export class Bifid extends SombraTransform {
+}
+
+
+
+export var polybius = createApiShortcut(Polybius)
+export var bifid = createApiShortcut(Bifid)
