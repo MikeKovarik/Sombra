@@ -107,8 +107,9 @@ export function surrogatePairToCodePoint(high, low) {
 
 // Splits single code point number (32b) into High and Low parts of surrogate pair (2x16b).
 export function codePointToSurrogatePair(codePoint) {
-	var high = Math.floor((codePoint - 0x10000) / 0x400) + 0xD800
-	var low = (codePoint - 0x10000) % 0x400 + 0xDC00
+	var temp = codePoint - 0x10000
+	var high = Math.floor(temp / 0x400) + 0xD800
+	var low = temp % 0x400 + 0xDC00
 	return [high, low]
 }
 
@@ -143,12 +144,31 @@ export function encodeUtf32String(string) {
 }
 
 
-export function getCodeUnits(string, bits) {
-	if (bits === 32)
-		return getCodePoints(string)
-	else if (bits === 8)
-		string = escapeUtf8(string)
-	return getCharCodes(string)
+export function getCodeUnits(chunk, bits = 8) {
+	if (bits === 32) {
+		return getCodePoints(chunk)
+	} else {
+		if (typeof chunk === 'string') {
+			if (bits === 8)
+				chunk = escapeUtf8(chunk)
+			return getCharCodes(chunk)
+		} else {
+			if (bits === 8) {
+				return Array.from(chunk)
+			} else {
+				var codeUnits = []
+				var codePoints = getCodePointsFromUtf8Buffer(chunk)
+				for (var i = 0; i < codePoints.length; i++) {
+					var codePoint = codePoints[i]
+					if (isUtf16Surrogate(codePoint))
+						codeUnits.push(...codePointToSurrogatePair(codePoint))
+					else
+						codeUnits.push(codePoint)
+				}
+				return codeUnits
+			}
+		}
+	}
 }
 
 export function getCharCodes(string, buffer = []) {
