@@ -1,9 +1,13 @@
 import {bufferFrom, bufferToString, bufferConcat} from './util-buffer.mjs'
-import {fromCodePoint, getCodePoints, sanitizeUtf8BufferChunk} from './util-utf.mjs'
+import {fromCodePoint, getCodePoints, getCodeUnits, sanitizeUtf8BufferChunk, codePointToUtf8Sequence} from './util-utf.mjs'
 import {createApiShortcut} from './util.mjs'
 import {SombraTransform} from './SombraTransform.mjs'
 import {ENTITY} from './util-tables.mjs'
 
+
+function bufferFromCodePoint(codePoint) {
+	return bufferFrom([codePoint])
+}
 
 function isHexCharacter(character) {
 	return /[0-9A-Fa-f]/.test(character)
@@ -30,10 +34,11 @@ export class EntityTransform extends SombraTransform {
 	}
 
 	_digest(options) {
-		if (this.decoder) {
+		if (this.decoder && this.lastChunk) {
 			var lastProcessed = this._decode(undefined, options)
 			if (lastProcessed && typeof lastProcessed === 'string')
 				lastProcessed = bufferFrom(lastProcessed)
+			console.log('lastProcessed', lastProcessed)
 			if (this.lastChunk)
 				return bufferConcat([lastProcessed, bufferFrom(this.lastChunk)])
 			else
@@ -44,20 +49,13 @@ export class EntityTransform extends SombraTransform {
 	// Entity encoder and decoder methods.
 
 	_encode(chunk, options) {
-		//console.log('_encode -------------------------------------------')
-		//console.log(chunk, bufferToString(chunk))
-		var {prefix, postfix, radix, uppercase, zeroPadded} = options
-		//console.log('codepoints', getCodePoints(chunk))
-		var res = getCodePoints(chunk)
+		return getCodeUnits(chunk, options.bits)
 			.map(code => this._encodeCharacter(code, options))
 			.join('')
-		//console.log('res', res)
-		return res
 	}
 	
 	_encodeCharacter(code, options) {
 		var stringCode = code.toString(options.radix)
-		//console.log('_encodeCharacter', code, stringCode)
 		if (options.uppercase)
 			stringCode = stringCode.toUpperCase()
 		if (options.zeroPadded)
@@ -67,11 +65,20 @@ export class EntityTransform extends SombraTransform {
 
 	_decode(chunk, options) {
 		var {prefix, postfix} = options
-		//console.log('_decode #############################################################')
-		var isLastChunk = false
+		var {safeBufferSize, chars} = this
+		// Most formats have either postfix of fixed length of the payload. Though for example Unicode has 4 zero-padded
+		// characters which could be longer than that (Skull emoji is 5 character long U+1F480) so we need to keep some
+		// room at the end of each chunk to safely account for possibly longer codes.
+		var entityLength = safeBufferSize ? 0 : chars || options.zeroPadded
+		console.log('_decode #############################################################')
+		//console.log('# chunk', chunk, typeof chunk)
+		//console.log('# this.lastChunk', this.lastChunk, typeof this.lastChunk)
+		var isFinalChunk = false
 		if (chunk === undefined) {
-			isLastChunk = true
+			isFinalChunk = true
 			chunk = this.lastChunk
+			if (typeof chunk !== 'string')
+				chunk = bufferToString(chunk)
 		} else {
 			if (typeof chunk !== 'string')
 				chunk = bufferToString(chunk)
@@ -81,38 +88,39 @@ export class EntityTransform extends SombraTransform {
 				this.lastChunk = undefined
 			}
 		}
-		//console.log(chunk)
+		console.log('chunk', chunk)
 		// TODO: This implementation expects prefix to be defined. However in case CSS unicode escaping
 		//       with \ it will not work as expected. i guess. 
 		var prefixIndex
 		var sections = []
-		//var killswitch = 4
 		while ((prefixIndex = chunk.indexOf(prefix)) !== -1) {
-			//if (killswitch-- === 0) return
 			if (prefixIndex > 0) {
 				var beforePrefix = chunk.slice(0, prefixIndex)
-				sections.push(beforePrefix)
+				chunk = chunk.slice(prefixIndex)
+				prefixIndex = 0
+				sections.push(bufferFrom(beforePrefix))
 			}
 			var entityEndIndex = chunk.length
 			// Find end of the entity so it can be stripped of prefix and postfix for further processing.
 			if (postfix) {
 				var postfixIndex = chunk.indexOf(postfix)
 				if (postfixIndex === -1) {
-					chunk = chunk.slice(prefixIndex)
 					break
 				} else {
 					entityEndIndex = postfixIndex + postfix.length
 				}
+			} else if (entityLength) {
+				entityEndIndex = prefixIndex + prefix.length + entityLength
+				if (!isFinalChunk && entityEndIndex > chunk.length)
+					break
 			} else {
 				// Entity does not have postfix that could be used for determining length.
 				// Manually looping through all characters after prefix until end is guessed.
 				var i = prefixIndex + prefix.length
-				var minLength = options.minLength || 4
-				//console.log(i, minLength, i + minLength, chunk.length)
-				if (!isLastChunk && i + minLength >= chunk.length) {
+				var guessedEntityEndIndex = i + safeBufferSize
+				if (!isFinalChunk && guessedEntityEndIndex > chunk.length)
 					break
-				}
-				var maxEnd = Math.min(chunk.length, i + minLength)
+				var maxEnd = Math.min(chunk.length, guessedEntityEndIndex)
 				while (i++ < maxEnd) {
 					if (!isHexCharacter(chunk[i])) {
 						entityEndIndex = i
@@ -120,21 +128,27 @@ export class EntityTransform extends SombraTransform {
 					}
 				}
 			}
+			//console.log('before', chunk)
+			//console.log('prefixIndex', prefixIndex)
+			//console.log('entityEndIndex', entityEndIndex)
 			// Slice entity's prefix and postfix and decode it.
 			var entity = chunk.slice(prefixIndex, entityEndIndex)
+			//console.log('entity', entity)
 			sections.push(this._decodeEntity(entity, options))
-			//console.log('sections', sections)
 			// Remove the entity we just decoded and continue with the rest of the chunk in next loop.
 			chunk = chunk.slice(entityEndIndex)
+			//console.log('chunk to store', chunk)
 		}
-		//console.log('storing', chunk)
-		this.lastChunk = chunk
-		//console.log('# sections', sections)
-		//console.log('res', sections.join(''))
-		return sections.join('')
+		this.lastChunk = chunk && chunk.length ? chunk : undefined
+		//console.log('this.lastChunk', this.lastChunk)
+		console.log('sections', sections)
+		console.log('concat', bufferConcat(sections))
+		console.log('res', bufferToString(bufferConcat(sections)))
+		return bufferConcat(sections)
 	}
 
 	_decodeEntity(entity, options) {
+		console.log('_decodeEntity', entity)
 		var {prefix, postfix, radix} = options
 		if (postfix && postfix.length)
 			var parsed = entity.slice(prefix.length, -postfix.length)
@@ -142,7 +156,15 @@ export class EntityTransform extends SombraTransform {
 			var parsed = entity.slice(prefix.length)
 		// Check if the charcode is single character or special unicode (usually emoji) that takes two
 		// characters (4 bytes). And stringify the charcode properly if so.
-		return fromCodePoint(parseInt(parsed, radix))
+		//return fromCodePoint(parseInt(parsed, radix))
+		var codePoint = parseInt(parsed, radix)
+		//console.log('entity', entity)
+		//console.log('parsed', parsed)
+		//console.log('codePoint', codePoint)
+		if (codePoint > 0xFF)
+			return bufferFrom(codePointToUtf8Sequence(codePoint))
+		else
+			return bufferFrom([codePoint])
 	}
 
 }
@@ -153,6 +175,8 @@ export class NcrDec extends EntityTransform {
 	static prefix = '&#'
 	static postfix = ';'
 	static radix = 10
+	static bits = 32
+	static uppercase = true
 }
 
 // Encodes every character into notation
@@ -160,28 +184,102 @@ export class NcrHex extends EntityTransform {
 	static prefix = '&#x'
 	static postfix = ';'
 	static radix = 16
+	static bits = 32
+	static uppercase = true
 }
 
 // Encodes every character into notation
-export class UnicodeEscaped extends EntityTransform {
+// a  => \x61
+// ř  => \xC5\x99
+// €  => \xE2\x82\xAC
+// 💀 => \xF0\x9F\x92\x80
+export class UnicodeEscaped8 extends EntityTransform {
+	static prefix = '\\x'
+	static radix = 16
+	static chars = 2
+	//static bits = 8
+	static zeroPadded = 2
+	static uppercase = true
+}
+
+// Encodes every character into notation
+// a  => \u0061
+// ř  => \u0159
+// €  => \u20AC
+// 💀 => \uD83D\uDC80
+export class UnicodeEscaped16 extends EntityTransform {
 	static prefix = '\\u'
 	static radix = 16
+	static chars = 4
+	//static bits = 16
+	static zeroPadded = 4
+	static uppercase = true
 }
 
 // Encodes every character into notation
+// a  => \u{61}
+// ř  => \u{159}
+// €  => \u{20AC}
+// 💀 => \u{1F480}
+export class UnicodeEscaped32 extends EntityTransform {
+	static prefix = '\\u{'
+	static postfix = '}'
+	static radix = 16
+	static bits = 32
+	static uppercase = true
+}
+
+// Encodes every character into notation
+// a  => U+0061
+// ř  => U+0159
+// €  => U+20AC
+// 💀 => U+1F480
 export class Unicode extends EntityTransform {
 	static prefix = 'U+'
-	static postfix = ''
 	static radix = 16
-	static uppercase = true
 	static zeroPadded = 4
+	static bits = 32
+	// Unicode codes have 4 zero-padded characters by default but the code can be londer than that.
+	// Skull emoji is 5 character long (U+1F480) so we need to leave some room at the end of each chunk
+	// to safely account for possibly longer than 4 bytes codes while decoding.
+	static variableLength = true
+	static safeBufferSize = 6
+	static uppercase = true
 }
 
 // TODO:
-// </div> => %3C%2Fdiv%3E
+// </div> => %3C%2F%64%69%76%3E
+// 💀 => %F0%9F%92%80
 // Name URL?
 export class Percent extends EntityTransform {
-	// TODO
+	static prefix = '%'
+	static postfix = ''
+	static radix = 16
+	static uppercase = true
+	static zeroPadded = 2
+	static chars = 2
+}
+
+// </div> => %3C/div%3E
+export class Url extends Percent {
+
+	_encode(chunk) {
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		return encodeURI(chunk)
+	}
+
+}
+
+// </div> => %3C%2Fdiv%3E
+export class UrlComponent extends Percent {
+
+	_encode(chunk) {
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		return encodeURIComponent(chunk)
+	}
+
 }
 // TODO: two classes, URL, URL component
 
@@ -212,9 +310,19 @@ export class HtmlEscaper extends EntityTransform {
 
 	_decodeEntity(string) {
 		var entity = string.slice(1, -1)
+		if (entity.length === 0) return
 		// return string character (of the named entity)
-		return ENTITY.get(entity)
+		var char = ENTITY.get(entity)
+		if (char === undefined) return
+		var codePoint = char.codePointAt(0)
+		return bufferFrom(codePointToUtf8Sequence(codePoint))
 	}
+
+	//_decodeEntity(string) {
+	//	var entity = string.slice(1, -1)
+	//	// return string character (of the named entity)
+	//	return ENTITY.get(entity)
+	//}
 
 }
 
@@ -222,10 +330,12 @@ export class HtmlEscaper extends EntityTransform {
 
 export var ncrdec = createApiShortcut(NcrDec)
 export var ncrhex = createApiShortcut(NcrHex)
-export var unicodeescaped = createApiShortcut(UnicodeEscaped)
+export var unicodeEscaped8 = createApiShortcut(UnicodeEscaped8)
+export var unicodeEscaped16 = createApiShortcut(UnicodeEscaped16)
+export var unicodeEscaped32 = createApiShortcut(UnicodeEscaped32)
 export var unicode = createApiShortcut(Unicode)
 export var html = createApiShortcut(HtmlEscaper)
 
-export var url// = createApiShortcut(HtmlEscaper)
-export var percent = url
-export var urlComponent// = createApiShortcut(HtmlEscaper)
+export var percent = createApiShortcut(Percent)
+export var url = createApiShortcut(Url)
+export var urlComponent = createApiShortcut(UrlComponent)
