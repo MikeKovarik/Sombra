@@ -207,7 +207,6 @@ export class A1z26 extends SombraTransform {
 			// TODO: split into words and only encode those
 			.map(code => this._encodeCharacter(code))
 			.join(separator)
-		console.log(bufferFrom(characters).toString())
 		return bufferFrom(characters)
 	}
 	_encodeCharacter(code) {
@@ -244,32 +243,18 @@ export class vigenere extends SombraTransform {
 // IDEA: builtin diacritics sanitizer?
 export class Morse extends SombraTransform {
 
-	static destructive = true
+	// TODO: figure out some other way to signalize that the cipher does not translate 1:1
+	//static destructive = true
 
-	static args = [{
-		title: 'Throw errors',
-		name: 'throwErrors',
-		default: true
-	}, {
-		title: 'Short',
-		name: 'short',
-		default: '.'
-	}, {
-		title: 'Long',
-		name: 'long',
-		default: '-'
-	}, {
-		title: 'Space',
-		name: 'space',
-		default: '/'
-	}, {
-		title: 'Separator',
-		name: 'separator',
-		default: ' '
-	}]
+	static short = '.'
+	static long = '-'
+	static space = '/'
+	static separator = ' '
+	static throwErrors = true
 
 	static alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789.,?-=:;()/"$\'_@!!+~#&\näáåéñöü'
 
+	// TODO: enable custom long/short characters
 	static codes = [
 		// abcdefghijklmnopqrstuvwxyz
 		'.-', '-...', '-.-.', '-..', '.', '..-.', '--.', '....', '..', '.---', '-.-', '.-..', '--',
@@ -284,8 +269,9 @@ export class Morse extends SombraTransform {
 	]
 
 
-	_encode(buffer, throwErrors, short, long, space, separator) {
-		var {alphabet, codes} = this.constructor
+	_encode(buffer, options) {
+		var {alphabet, codes, short, long, space, separator, throwErrors} = options
+		// TODO: enable custom long/short characters
 		var string = bufferToString(buffer)
 			.toLowerCase()
 			.split('')
@@ -305,8 +291,9 @@ export class Morse extends SombraTransform {
 	static decode(buffer) {
 		return this.prototype._decode(buffer, ...this.args.map(o => o.default))
 	}
-	_decode(buffer, throwErrors, short, long, space, separator) {
-		var {alphabet, codes} = this.constructor
+	_decode(buffer, options) {
+		var {alphabet, codes, short, long, space, separator, throwErrors} = options
+		// TODO: enable custom long/short characters
 		var string = bufferToString(buffer)
 			.split(separator)
 			.map(entity => {
@@ -327,51 +314,43 @@ export class Morse extends SombraTransform {
 
 export class Polybius extends SombraTransform {
 
-	static charToSkip = 'j'
-	static skipAsChar = 'i'
+	// TODO: figure out some way to signalize that the cipher does not translate 1:1
 
-	_encode(chunk, options) {
-		// Note: polybius only accepts a-z characters that fall under ASCII range (up to 127)
-		//       so we can safely use only UTF-8 buffer or alternatively transform string to 8b code units
-		//       (effectively encoding it into UTF8 array)
-		if (typeof chunk === 'string')
-			chunk = getCodeUnits(chunk)
-		var {charToSkip, skipAsChar} = options
-		var codeToSkip = charToSkip.charCodeAt(0)
-		var skipAsCode = skipAsChar.charCodeAt(0)
+	static charToReplace = 'j'
+	static replaceWith = 'i'
+
+	// Encoder
+
+	_encodeSetup(options, state) {
+		this._createAlphabet(options, state)
+	}
+
+	_encode(chunk, options, state) {
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		var sanitized = this._sanitizeChunk(chunk, options, state)
+		var {alphabet} = state
 		var output = ''
-		var code
-		var base
-		var num
-		var row
-		var col
+		var char
 		for (var i = 0; i < chunk.length; i++) {
-			code = chunk[i]
-			// outside the square only space can be used
-			// TODO: add option to allow more characters (commas, quotes, etc)
-			if (code === 32) {
+			char = sanitized[i]
+			if (char === ' ') {
 				output += ' '
 				continue
 			}
-			// trasform to lowercase
-			if (isUpperCaseCode(code))
-				code += 32
-			// ignore all non a-z characters
-			if (!isLowerCaseCode(code))
-				continue
-			// map the character 26th to skip
-			if (code === codeToSkip)
-				code = skipAsCode
-			base = code > codeToSkip ? 97 : 96
-			num = code - base
-			row = Math.ceil((num) / 5)
-			col = (num - 1) % 5 + 1
+			let [row, col] = this._indexToCords(alphabet.indexOf(char))
 			output += `${row}${col}`
 		}
 		return output
 	}
 	
-	_decode(chunk, options) {
+	// Decoder
+
+	_decodeSetup(options, state) {
+		this._createAlphabet(options, state)
+	}
+
+	_decode(chunk, options, state) {
 		if (typeof chunk !== 'string')
 			chunk = bufferToString(chunk)
 		// Restore last chunk if there was one.
@@ -379,16 +358,17 @@ export class Polybius extends SombraTransform {
 			chunk = this.lastChunk + chunk
 			this.lastChunk = undefined
 		}
-		var output = []
+		var {alphabet} = state
+		var sanitized = this._sanitizeChunk(chunk, options, state)
+		var codeToSkip = options.charToReplace.charCodeAt(0)
+		var output = ''
 		var row
 		var col
-		var code
-		var codeToSkip = options.charToSkip.charCodeAt(0)
 		for (var i = 0; i < chunk.length; i += 2) {
 			// Spaces!
 			if (chunk[i] === ' ') {
 				i--
-				output.push(32)
+				output += ' '
 				continue
 			}
 			// Prevent handling if we only have one character left (the row/col pair is split).
@@ -398,23 +378,191 @@ export class Polybius extends SombraTransform {
 			}
 			row = parseInt(chunk[i])
 			col = parseInt(chunk[i + 1])
-			if (col && row)
-			code = (row - 1) * 5 + col + 96
-			if (code > codeToSkip)
-				code++
-			output.push(code)
-			// TODO: handle incomplete chunks
+			output += alphabet[this._cordsToIndex(row, col)]
 		}
-		return bufferFrom(output)
+		return output
+	}
+
+	// Helpers
+
+	_sanitizeChunk(chunk, options, state) {
+		var {charToReplace, replaceWith, charToSkip} = options
+		// 'j' is replaced by 'i' by default but only unless there's a specific character to completely skip.
+		if (charToReplace && !charToSkip)
+			chunk = chunk.replace(new RegExp(charToReplace, 'g'), replaceWith)
+		else if (charToSkip)
+			chunk = chunk.replace(new RegExp(charToSkip, 'g'), '')
+		return chunk
+			.toLowerCase()
+			.replace(/[^a-z ]/g, '')
+	}
+
+	_createAlphabet(options, state) {
+		// Allow custom defined alphabet or key (25 char long string, e.g. alphabet).
+		var alphabet = options.key || options.alphabet
+		if (alphabet && alphabet.length !== 25)
+			throw new Error('Alphabet (or key) has to be exactly 25 characters long')
+		// Create alphabet of 25 chars (skipping one) based on given skip or replacement rules
+		if (!alphabet) {
+			var exclude = options.charToSkip || options.charToReplace
+			var AlphabetCache = this.constructor = this.constructor || {}
+			var alphabet = AlphabetCache[exclude]
+			if (!alphabet) {
+				AlphabetCache[exclude] = alphabet = []
+				var code
+				var excludeCode = exclude.charCodeAt(0)
+				for (var i = 0; i < 26; i++) {
+					code = 97 + i
+					if (code !== excludeCode)
+					alphabet.push(String.fromCharCode(code))
+				}
+			}
+		}
+		state.alphabet = alphabet
+	}
+
+	_indexToCords(code) {
+		var row = Math.ceil((code + 1) / 5)
+		var col = code % 5 + 1
+		return [row, col]
+	}
+
+	_cordsToIndex(row, col) {
+		return (row * 5) + col - 6
 	}
 
 }
 
 
-export class Bifid extends SombraTransform {
+
+
+export class Bifid extends Polybius {
+
+	// TODO: this cipher has to have everything buffered up front
+
+	static charToReplace = 'j'
+	static replaceWith = 'i'
+
+	static charToSkip = undefined
+
+	//static charToSkip = 'q'
+	static sanitize = false
+
+	// Prevents chunked processing (of the stream). Cipher has to be calculated all at once.
+	static chunked = false
+
+	// Encoder
+
+	_encodeSetup(options, state) {
+		state.input = ''
+		state.rows = []
+		state.cols = []
+		this._createAlphabet(options, state)
+	}
+
+	_encode(chunk, options, state) {
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		var sanitized = this._sanitizeChunk(chunk, options, state)
+		var {rows, cols, alphabet} = state
+		for (var i = 0; i < sanitized.length; i++) {
+			let [row, col] = this._indexToCords(alphabet.indexOf(sanitized[i]))
+			rows[i] = row
+			cols[i] = col
+		}
+	}
+
+	_encodeDigest(options, state) {
+		var {rows, cols, alphabet, input} = state
+		var combined = [...rows, ...cols]
+		var encoded = ''
+		for (var i = 0; i < combined.length; i += 2)
+			encoded += alphabet[this._cordsToIndex(combined[i], combined[i + 1])]
+		if (options.sanitize)
+			return encoded
+		else
+			return this._formatOutput(state.input, encoded, alphabet)
+	}
+
+	// Decoder
+
+	_decodeSetup(options, state) {
+		state.input = ''
+		state.cords = []
+		this._createAlphabet(options, state)
+	}
+
+	_decode(chunk, options, state) {
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		// Restore last chunk if there was one.
+		if (state.lastChunk) {
+			chunk = state.lastChunk + chunk
+			state.lastChunk = undefined
+		}
+		var sanitized = this._sanitizeChunk(chunk, options, state)
+		var {alphabet, cords} = state
+		for (var i = 0; i < sanitized.length; i++)
+			cords.push(...this._indexToCords(alphabet.indexOf(sanitized[i])))
+	}
+
+	_decodeDigest(options, state) {
+		var {alphabet, cords} = state
+		var rows = cords.slice(0, cords.length / 2)
+		var cols = cords.slice(cords.length / 2)
+		var decoded = ''
+		for (var i = 0; i < rows.length; i++)
+			decoded += alphabet[this._cordsToIndex(rows[i], cols[i])]
+		if (options.sanitize)
+			return decoded
+		else
+			return this._formatOutput(state.input, decoded, alphabet)
+	}
+
+	// Helpers
+
+	_sanitizeChunk(chunk, options, state) {
+		var {charToReplace, replaceWith, charToSkip} = options
+		// 'j' is replaced by 'i' by default but only unless there's a specific character to completely skip.
+		if (charToReplace && !charToSkip)
+			chunk = chunk.replace(new RegExp(charToReplace, 'g'), replaceWith)
+		state.input += chunk
+		if (charToSkip)
+			chunk = chunk.replace(new RegExp(charToSkip, 'g'), '')
+		return chunk
+			.toLowerCase()
+			.replace(/[^a-z]/g, '')
+	}
+
+	_formatOutput(input, processed, alphabet) {
+		var output = ''
+		var j = 0
+		var char
+		var charLowerCase
+		for (var i = 0; i < input.length; i++) {
+			char = input[i]
+			charLowerCase = char.toLowerCase()
+			if (alphabet.includes(charLowerCase)) {
+				if (char === charLowerCase)
+					output += processed[j]
+				else
+					output += processed[j].toUpperCase()
+				j++
+			} else {
+				output += char
+			}
+		}
+		return output
+	}
+
 }
 
 
 
+//export var morse = createApiShortcut(Morse)
+//export var polybius = createApiShortcut(Polybius)
+//export var bifid = createApiShortcut(Bifid)
+
+export var morse = createApiShortcut(Morse)
 export var polybius = createApiShortcut(Polybius)
 export var bifid = createApiShortcut(Bifid)
