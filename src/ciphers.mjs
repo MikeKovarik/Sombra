@@ -20,131 +20,69 @@ function isLowerCaseCode(code) {
 	return code >= 97 && code <= 122
 }
 
-export class Clock extends SombraTransform {
-
-	static args = [{
-		title: 'Separator',
-		type: 'string',
-		default: ':'
-	}]
-
-	// TODO: FIX LOWER CASE
-	//static encode(buffer, separator = ':') {
-	//	return this.encodePipe(buffer, separator = ':').join(separator)
-	//}
-	static _encode(buffer, separator) {
-		return Array.from(buffer)
-			.map(code => {
-				// handle uppercase
-				if (code >= 65 && code <= 90) code += 32
-				if (code === 97)  return 'AM'
-				if (code === 122) return 'PM'
-				if (code === 32)  return '00'
-				if (code == 32 || (code >= 97 && code <= 122)) {
-					return (code - 97) + ''
-				} else {
-					throw new Error(`Sombra.clock cipher: invalid character '${String.fromCharCode(code)}' (${code})`)
-				}
-			})
-			.filter(str => str) // remove invalid (undefined after mapping) characters
-			.join(separator)
-	}
-
-	static _decode(buffer, separator) {
-		var decodedBuffer = Utf8.toString(buffer)
-			.toUpperCase()
-			.split(separator)
-			.filter(str => str.length) // remove empty spaces between ::
-			.map(str => {
-				if (str === 'AM') str = 0
-				if (str === 'PM') str = 25
-				if (str === '00') str = -65
-				return parseInt(str) + 97
-			})
-		return String.fromCharCode(...decodedBuffer)
-	}
-
-}
 
 
+class SingleCharacterCipher extends SombraTransform {
 
-// Work in progress
-//var memoizedCodes = {}
-export class xor extends SombraTransform {
-
-	static args = [{
-		title: 'Key',
-		type: 'number',
-		min: 0,
-		max: 26,
-		default: 23
-	//}, {
-	//	title: 'Skip characters',
-	//	type: 'string',
-	//	default: ' .'
-	}]
-
-	static encode(buffer, key = 0/*, skipCodesString*/) {
-		// stejne neresi diakritiku
-		//var skipCodes = memoizedCodes[memoizedCodes]
-		//if (!skipCodes) skipCodes = memoizedCodes[memoizedCodes] = Utf8.fromString(skipCodesString)
-		//console.log('XOR', buffer, key, skipCodes)
-		return Array.from(buffer)
-			.map(code => skipCodes.includes(code) ? code : code ^ key)	
-	}
-
-	static decode(buffer, key = 0) {
-		return this.encode(buffer, key)
-	}
-
-}
-
-
-
-// AKA ROT-n
-export class Caesar extends SombraTransform {
-
-	static destructive = false
-
-	static args = [{
-		title: 'Key',
-		type: 'number',
-		min: 0,
-		max: 26,
-		default: 23
-	}]
-
-	_encode(chunk, key) {
+	_encode(chunk, options) {
 		var encoded = bufferAlloc(chunk.length)
 		for (var i = 0; i < chunk.length; i++)
-			encoded[i] = this._encodeCharacter(chunk[i], key)
+			encoded[i] = this._encodeCharacter(chunk[i], options)
 		return encoded
 	}
-	_encodeCharacter(code, key) {
+
+	_decode(chunk, options) {
+		var decoded = bufferAlloc(chunk.length)
+		for (var i = 0; i < chunk.length; i++)
+			decoded[i] = this._decodeCharacter(chunk[i], options)
+		return decoded
+	}
+
+}
+
+
+class NumericKeyCipher extends SingleCharacterCipher {
+
+	// Is not lossless. Decoding won't yield exact copy of input.
+	static lossless = false // TODO: move this around, some ciphers can contain special characters
+
+	static key = 1
+
+	_setup(options) {
+		if (options.key > 26)
+			throw new Error('Key cannot be larger than 26')
+		if (options.key < 0)
+			throw new Error('Key cannot be smaller than 0')
+	}
+
+}
+
+
+class RotaryCipher extends NumericKeyCipher {
+
+	_encodeCharacter(code, options) {
 		if (isUpperCaseCode(code))
-			return shiftCharCode(code, key, 65) // upper case
+			return shiftCharCode(code, options.key, 65) // upper case
 		else if (isLowerCaseCode(code))
-			return shiftCharCode(code, key, 97) // lower case
+			return shiftCharCode(code, options.key, 97) // lower case
 		else
 			return code
 	}
 
-	// TODO
-	static decode(buffer, key) {
-		return this.encode(buffer, -key)
+	_decodeSetup(options) {
+		options.key = -options.key
+	}
+
+	_decode(chunk, options, state) {
+		return this._encode(chunk, options, state)
 	}
 
 }
 
-// Reverses alphabet
-export class Atbash extends SombraTransform {
 
-	_encode(chunk) {
-		var encoded = bufferAlloc(chunk.length)
-		for (var i = 0; i < chunk.length; i++)
-			encoded[i] = this._encodeCharacter(chunk[i])
-		return encoded
-	}
+// Reverses alphabet
+export class Atbash extends SingleCharacterCipher {
+
 	_encodeCharacter(code) {
 		if (isUpperCaseCode(code))
 			return Math.abs(code - 65 - 25) + 65
@@ -154,34 +92,63 @@ export class Atbash extends SombraTransform {
 			return code
 	}
 
-	_decode(buffer) {
-		var encoded = bufferAlloc(buffer.length)
-		for (var i = 0; i < buffer.length; i++)
-			encoded[i] = this._decodeCharacter(buffer[i])
-		return encoded
+	_decode(chunk, options, state) {
+		return this._encode(chunk, options, state)
 	}
-	_decodeCharacter(code) {
-		if (isUpperCaseCode(code))
-			return Math.abs(code - 65 - 25) + 65
-		else if (isLowerCaseCode(code))
-			return Math.abs(code - 97 - 25) + 97
-		else
-			return code
-	}
-
-	// TODO: decoder
 
 }
 
+
+// Work in progress
+//var memoizedCodes = {}
+export class XorCipher extends NumericKeyCipher {
+
+	_encodeCharacter(code, options) {
+		return code ^ options.key	
+		//return skipCodes.includes(code) ? code : code ^ options.key	
+	}
+
+	_decode(buffer, options) {
+		return this._encode(buffer, options)
+	}
+
+}
+
+
+// AKA ROT-n
+export class Caesar extends RotaryCipher {
+	// Cauesar is not limited to key 23, this is just arbitrary number
+	// that user will overwite with his own key.
+	static key = 23
+
+}
+
+// AKA Caesar shift with key 5
+// Covers numbers (0-9)
+export class Rot5 extends RotaryCipher {
+	// TODO: handle special characters (add option to un/sanitize) and lossless
+	static key = 5
+}
+
 // AKA Caesar shift with key 13
-export class rot13 extends SombraTransform {
+// Covers the 26 letters of basic latin alphabet (A-Z, a-z)
+export class Rot13 extends RotaryCipher {
+	// TODO: handle special characters (add option to un/sanitize) and lossless
+	static key = 13
+}
 
-	// TODO: rot5 (0-9), rot13 (A-Z, a-z), rot18 (0-9, A-Z, a-z), rot47 (!-~)
+// AKA Caesar shift with key 18. Combination of ROT5 and ROT13
+// Covers numbers and basic latin alphabet (0-9, A-Z, a-z)
+export class Rot18 extends RotaryCipher {
+	// TODO: handle special characters (add option to un/sanitize) and lossless
+	static key = 18
+}
 
-	static encode = (buffer, key) => Caesar.encode(buffer, 13)
-	static decode = (buffer, key) => Caesar.encode(buffer, 13)
-	// nature of ROT13 causes every other encode() to revert previous encoding
-
+// AKA Caesar shift with key 47
+// Covers all printable ASCII characters, except empty spaces.
+export class Rot47 extends RotaryCipher {
+	// TODO: handle special characters (add option to un/sanitize) and lossless
+	static key = 47
 }
 
 
@@ -191,22 +158,19 @@ export class rot13 extends SombraTransform {
 // TODO: Finish
 export class A1z26 extends SombraTransform {
 
-	static destructive = true
+	// Is not lossless. Decoding won't yield exact copy of input.
+	static lossless = false
 
-	static args = [{
-		title: 'Spacer',
-		type: 'string',
-		default: '-'
-	}]
+	static separator = '-'
 
 	// TODO: make it streamable so we don't break it in middle of a word
 
-	_encode(chunk, separator) {
+	_encode(chunk, options) {
 		var encoded = bufferAlloc(chunk.length)
 		var characters = Array.from(chunk)
 			// TODO: split into words and only encode those
 			.map(code => this._encodeCharacter(code))
-			.join(separator)
+			.join(options.separator)
 		return bufferFrom(characters)
 	}
 	_encodeCharacter(code) {
@@ -221,20 +185,17 @@ export class A1z26 extends SombraTransform {
 }
 
 // Like casear, but
-export class vigenere extends SombraTransform {
+export class Vigenere extends SombraTransform {
 
-	static destructive = true
+	// Is not lossless. Decoding won't yield exact copy of input.
+	static lossless = false
 
-	static args = [{
-		title: 'Key',
-		type: 'string',
-		default: ''
-	}]
+	static key = ''
 
-	static encode(buffer, key) {
+	_encode(chunk, options) {
 	}
 
-	static decode(buffer, key) {
+	_decode(chunk, options) {
 	}
 
 }
@@ -243,8 +204,8 @@ export class vigenere extends SombraTransform {
 // IDEA: builtin diacritics sanitizer?
 export class Morse extends SombraTransform {
 
-	// TODO: figure out some other way to signalize that the cipher does not translate 1:1
-	//static destructive = true
+	// Is not lossless. Decoding won't yield exact copy of input.
+	static lossless = false
 
 	static short = '.'
 	static long = '-'
@@ -572,11 +533,53 @@ export class Bifid extends Polybius {
 }
 
 
+export class ClockCipher extends SombraTransform {
 
-//export var morse = createApiShortcut(Morse)
-//export var polybius = createApiShortcut(Polybius)
-//export var bifid = createApiShortcut(Bifid)
+	static separator = ':'
 
+	// TODO: FIX LOWER CASE
+	_encode(buffer, options) {
+		return Array.from(buffer)
+			.map(code => {
+				// handle uppercase
+				if (code >= 65 && code <= 90) code += 32
+				if (code === 97)  return 'AM'
+				if (code === 122) return 'PM'
+				if (code === 32)  return '00'
+				if (code == 32 || (code >= 97 && code <= 122)) {
+					return (code - 97) + ''
+				} else {
+					throw new Error(`Sombra.clock cipher: invalid character '${String.fromCharCode(code)}' (${code})`)
+				}
+			})
+			.filter(str => str) // remove invalid (undefined after mapping) characters
+			.join(options.separator)
+	}
+
+	_decode(buffer, options) {
+		var decodedBuffer = Utf8.toString(buffer)
+			.toUpperCase()
+			.split(options.separator)
+			.filter(str => str.length) // remove empty spaces between ::
+			.map(str => {
+				if (str === 'AM') str = 0
+				if (str === 'PM') str = 25
+				if (str === '00') str = -65
+				return parseInt(str) + 97
+			})
+		return String.fromCharCode(...decodedBuffer)
+	}
+
+}
+
+
+export var xorCipher = createApiShortcut(XorCipher)
+export var caesar = createApiShortcut(Caesar)
+export var atbash = createApiShortcut(Atbash)
+export var rot13 = createApiShortcut(Rot13)
+export var a1z26 = createApiShortcut(A1z26)
+export var vigenere = createApiShortcut(Vigenere)
 export var morse = createApiShortcut(Morse)
 export var polybius = createApiShortcut(Polybius)
 export var bifid = createApiShortcut(Bifid)
+export var clockCipher = createApiShortcut(ClockCipher)
