@@ -2,6 +2,14 @@ import {Transform} from './node-builtins.mjs'
 import {bufferFrom, bufferToString, bufferConcat} from './util-buffer.mjs'
 
 
+function getDefaultOptions(Class) {
+	var obj = {}
+	for (var key in Class)
+		if (typeof Class[key] !== 'function')
+			obj[key] = Class[key]
+	return obj
+}
+
 // TODO: take another stab at making the core functionality state-less so _encode() and _decode()
 //       can be called from static methods without having to instantiate. Options object is already
 //       being passed through argument. Next could be 'lastValue' with so-far transformed chunks (or
@@ -12,14 +20,14 @@ export class SombraTransform extends Transform {
 	constructor(options) {
 		super()
 		// Apply user's options and class' default options.
-		var defaultOptions = {}
-		var Super = this.constructor
-		for (var key in Super)
-			if (typeof Super[key] !== 'function')
-				defaultOptions[key] = Super[key]
+		var defaultOptions = getDefaultOptions(this.constructor)
 		Object.assign(this, defaultOptions, options)
 		this.encoder = !this.decoder
 		this.decoder = !this.encoder
+		if (this.encoder && this._encodeSetup)
+			this._encodeSetup(this, this)
+		if (this.encoder && this._decodeSetup)
+			this._decodeSetup(this, this)
 		// Used to store raw chunks for defalt _update/_digest set of functions in algorithms that are not streamable.
 		// _update and _digest can be overwritten by inheritor in which case _rawChunks is useless because _update will
 		// be encoding each chunk on the fly. 
@@ -28,9 +36,8 @@ export class SombraTransform extends Transform {
 		this._covertedChunks = []
 	}
 
-	// default implementation to be overwritten where needed
-	_update(chunk, options) {
-		if (this.staggered) {
+	_update(chunk) {
+		if (this.chunked === false) {
 			// Sequential processing of possibly chunked but ordered and connected data.
 			// Chunks could be further sliced and stored (and their processing delayed)
 			// Until next chunk or until the very end of the stream.
@@ -41,27 +48,39 @@ export class SombraTransform extends Transform {
 			// without slicing or storing it in order to wait for another part.
 			// Suitable for binding to text fields.
 			// Unsuitable for converting files.
-			return this._convert(chunk, options)
+			if (this.decoder)
+				return this._decode(chunk, this, this)
+			else
+				return this._encode(chunk, this, this)
 		}
 	}
 
-	_digest(options) {
+	_digest() {
 		// Only proceed if there is something to digest.
-		if (this._rawChunks.length === 0)
-			return
-		// Merge unprocessed chunks.
-		var buffer = bufferConcat(this._rawChunks)
-		this._rawChunks = []
-		// Only return if there is something to digest.
-		if (buffer.length)
-			return this._convert(buffer, options)
-	}
-
-	_convert(buffer, options) {
-		if (this.decoder)
-			return this._decode(buffer, options)
-		else
-			return this._encode(buffer, options)
+		if (this._rawChunks.length) {
+			// Merge unprocessed chunks.
+			var buffer = bufferConcat(this._rawChunks)
+			this._rawChunks = []
+			// Only return if there is something to digest.
+			if (buffer.length) {
+				if (this.decoder) {
+					var result = this._decode(buffer, this, this)
+					if (this._decodeDigest)
+						return this._decodeDigest(this, this)
+					return result
+				} else {
+					var result = this._encode(buffer, this, this)
+					if (this._encodeDigest)
+						return this._encodeDigest(this, this)
+					return result
+				}
+			}
+		} else {
+			if (this._decodeDigest)
+				return this._decodeDigest(this, this)
+			else if (this._encodeDigest)
+				return this._encodeDigest(this, this)
+		}
 	}
 
 	// Continual update()/digest() API for streaming sources (other than Node streams).
@@ -76,7 +95,7 @@ export class SombraTransform extends Transform {
 	update(chunk, encoding = 'utf8') {
 		chunk = bufferFrom(chunk, encoding)
 		// Transform the chunk and store it for .digest() (end).
-		this._covertedChunks.push(this._update(chunk, this))
+		this._covertedChunks.push(this._update(chunk))
 		// Maintain chaniability.
 		return this
 	}
@@ -85,20 +104,14 @@ export class SombraTransform extends Transform {
 	// If encoding is provided a string will be returned; otherwise a Buffer is returned.
 	// The encoding can be 'hex', 'latin1' or 'base64'.
 	digest(encoding) {
-		//console.log('digest')
 		// Call underlying digest function and add the result to other chunks.
-		try {
-		this._covertedChunks.push(this._digest(this))
-	} catch(err) {console.error(err)}
+		this._covertedChunks.push(this._digest())
 		// Merge all previously collected chunks into single buffer.
-		//console.log('this._covertedChunks', this._covertedChunks)
 		var chunks = this._covertedChunks
 			.filter(chunk => chunk)
 			.map(chunk => bufferFrom(chunk))
-		//console.log('chunks', chunks)
 		this._covertedChunks = []
 		var result = bufferConcat(chunks)
-		//console.log('result', result)
 		// Always return buffer unless encoding is specified.
 		if (encoding)
 			return bufferToString(result, encoding)
@@ -111,12 +124,12 @@ export class SombraTransform extends Transform {
 	_transform(chunk, encoding = 'utf8', cb) {
 		chunk = bufferFrom(chunk, encoding)
 		// Transform the chunk and store it for flush (end of stream).
-		this.push(this._update(chunk, this))
+		this.push(this._update(chunk))
 		cb()
 	}
 
 	_flush(cb) {
-		this.push(this._digest(this))
+		this.push(this._digest())
 		cb()
 	}
 
@@ -140,38 +153,89 @@ export class SombraTransform extends Transform {
 
 	// HELPER FUNCTIONS
 
-	convert(data) {
+	convert(data, encoding) {
 		return this
 			.update(data)
-			.digest()
+			.digest(encoding)
 	}
-	static convert(data, options) {
-		return (new this(options)).convert(data)
-	}
-	static encode(data, options) {
-		options = Object.assign({encoder: true}, options)
-		return this.convert(data, options)
-	}
-	static decode(data, options) {
-		options = Object.assign({decoder: true}, options)
-		return this.convert(data, options)
+	convertToString(data) {
+		return this
+			.update(data)
+			.digest(this.defaultEncoding || this.constructor.defaultEncoding)
 	}
 
-	convertToString(data, options) {
-		return this
-			.update(data)
-			.digest(this.defaultEncoding || this.constructor.defaultEncoding || 'utf8')
+	// Some algorithms may returns string, some return Buffer due to performance (especially in chaining)
+	// .convertRaw() .encodeRaw() and .decodeRaw() directly return that without changing.
+
+	static convertRaw(data, options) {
+		if (this.decoder)
+			return this.decodeRaw(data, options)
+		else
+			return this.encodeRaw(data, options)
 	}
-	static convertToString(data, options) {
-		return (new this(options)).convertToString(data)
+	static encodeRaw(data, options) {
+		options = Object.assign(getDefaultOptions(this, true), options)
+		var proto = this.prototype
+		var state = {}
+		if (proto._encodeSetup)
+			proto._encodeSetup(options, state)
+		var result = proto._encode(data, options, state)
+		if (proto._encodeDigest)
+			return proto._encodeDigest(options, state)
+		return result
 	}
-	static encodeToString(data, options) {
-		options = Object.assign({encoder: true}, options)
-		return this.convertToString(data, options)
+	static decodeRaw(data, options) {
+		options = Object.assign(getDefaultOptions(this, true), options)
+		var proto = this.prototype
+		var state = {}
+		if (proto._decodeSetup)
+			proto._decodeSetup(options, state)
+		var result = proto._decode(data, options, state)
+		if (proto._decodeDigest)
+			return proto._decodeDigest(options, state)
+		return result
 	}
-	static decodeToString(data, options) {
-		options = Object.assign({decoder: true}, options)
-		return this.convertToString(data, options)
+
+	// .convert() .encode() and .decode() only return Buffer.
+
+	static convert(data, options) {
+		var result = this.convertRaw(data, options)
+		if (typeof result === 'string')
+			return bufferFrom(result)
+		return result
+	}
+	static encode(data, options) {
+		var result = this.encodeRaw(data, options)
+		if (typeof result === 'string')
+			return bufferFrom(result)
+		return result
+	}
+	static decode(data, options) {
+		var result = this.decodeRaw(data, options)
+		if (typeof result === 'string')
+			return bufferFrom(result)
+		return result
+	}
+
+	// .convertToString() .encodeToString() and .decodeToString() only return ... well... Boolean apparently.
+
+	static convertToString(data, options = {}) {
+		var result = this.convertRaw(data, options)
+		if (typeof result !== 'string')
+			return bufferToString(result, options.encoding || this.defaultEncoding || 'utf8')
+		return result
+	}
+	static encodeToString(data, options = {}) {
+		var result = this.encodeRaw(data, options)
+		if (typeof result !== 'string')
+			return bufferToString(result, options.encoding || this.defaultEncoding || 'utf8')
+		return result
+	}
+	static decodeToString(data, options = {}) {
+		var result = this.decodeRaw(data, options)
+		if (typeof result !== 'string')
+			return bufferToString(result, options.encoding || this.defaultEncoding || 'utf8')
+		return result
 	}
 
 }
