@@ -32,7 +32,7 @@ function createSuite(name, ...suiteArgs) {
 	if (typeof suiteArgs[suiteArgs.length - 1] === 'function')
 		var customTests = suiteArgs.pop()
 	var results = suiteArgs.pop()
-	var args = suiteArgs.pop()
+	var options = suiteArgs.pop()
 
 	describe(name, () => {
 		if (sombra[name] === undefined) {
@@ -41,20 +41,20 @@ function createSuite(name, ...suiteArgs) {
 		}
 		var compound = sombra[name]
 		if (compound.Encoder)
-			createClassSuite(compound.Encoder, args, results, 'encode')
+			createClassSuite(compound.Encoder, options, results, 'encode')
 		if (compound.Decoder)
-			createClassSuite(compound.Decoder, args, results, 'decode')
+			createClassSuite(compound.Decoder, options, results, 'decode')
 		if (customTests)
 			customTests()
 	})
 }
 
-function createClassSuite(Class, args = [], results, mode = 'encode') {
+function createClassSuite(Class, options, results, mode = 'encode') {
 	if (results === undefined) {
-		results = args
-		args = []
+		results = options
+		options = undefined
 	}
-
+	options = options || {}
 	for (var i in results) {
 		var pair = results[i]
 		results[i] = [bufferFrom(pair[0]), bufferFrom(pair[1])]
@@ -71,20 +71,20 @@ function createClassSuite(Class, args = [], results, mode = 'encode') {
 		}
 	}
 
-	var subName = ` (${JSON.stringify(args).slice(1, -1)})`
-	var argList = JSON.stringify(args).slice(1, -1)
+	var subName = ` (${JSON.stringify(options)})`
+	var argList = JSON.stringify(options)
 
 	it(`.${mode}(${argList})`, forEach(async (from, to) => {
-		var result = await Class.convert(from, ...args)
-		console.log('result', result, bufferToString(result))
-		console.log('epectd', to, bufferToString(to))
+		var result = await Class.convert(from, options)
+		console.log('result', result, typeof result !== 'string' ? bufferToString(result) : '')
+		console.log('epectd', to, typeof to !== 'string' ? bufferToString(to) : '')
 		assert.deepEqual(result, to)
 	}))
 
 	it(`(new ${Class.name}(${argList})).update() & .digest()` + subName, forEach(async (from, to) => {
-		var testedStream = new Class(...args)
+		var testedStream = new Class(options)
 		var remainder = from
-		var killswitch = 10
+		var killswitch = 20
 		//console.log('--------------------------------------------------------')
 		//console.log(from, bufferToString(from))
 		//console.log(Array.from(from).map(n => n.toString(2)))
@@ -103,7 +103,7 @@ function createClassSuite(Class, args = [], results, mode = 'encode') {
 
 	if (stream) {
 		it(`(new (${argList})).pipe() stream` + subName, forEach(async (from, to) => {
-			var testedStream = new Class(...args)
+			var testedStream = new Class(options)
 			var inputStream = createReadStream()
 			var remainder = from
 			while (remainder.length) {
@@ -505,10 +505,10 @@ describe('checksums', () => {
 		['hello', [0xec]],
 		['Avocados are useless.', [0x26]],
 	])
-	createSuite('twosComplement', [{bits: 16}], [
+	createSuite('twosComplement', {bits: 16}, [
 		['Avocados are useless.', bufferFrom('F826', 'hex')],
 	])
-	createSuite('twosComplement', [{bits: 32}], [
+	createSuite('twosComplement', {bits: 32}, [
 		['Avocados are useless.', bufferFrom('FFFFF826', 'hex')],
 	])
 
@@ -621,10 +621,14 @@ describe('ciphers', () => {
 	createSuite('morse', [
 		['a',     '.-'],
 		['hello', '.... . .-.. .-.. ---'],
-		['Avocados are useless.', '.- ...- --- -.-. .- -.. --- ... / .- .-. . / ..- ... . .-.. . ... ... .-.-.-'],
+		['avocados are useless.', '.- ...- --- -.-. .- -.. --- ... / .- .-. . / ..- ... . .-.. . ... ... .-.-.-'],
 		// special characters
 		['&\n', '.-... .-.-..'],
 	], () => {
+		it('uppercase characters are transformed to lower case', async () => {
+			assert.deepEqual(sombra.morse('hello'), '.... . .-.. .-.. ---')
+			assert.deepEqual(sombra.morse('HeLlO'), '.... . .-.. .-.. ---')
+		})
 		it('invalid characters throw error by default', async () => {
 			try {
 				sombra.morse.encode(bufferFrom('řčžw'))
@@ -633,7 +637,7 @@ describe('ciphers', () => {
 			}
 		})
 		it('invalid characters can be ignored, errors suppressed', async () => {
-			assert.deepEqual(sombra.morse.encode(bufferFrom('řb'), false), bufferFrom('-...'))
+			assert.deepEqual(sombra.morse.encode(bufferFrom('řb'), {throwErrors: false}), bufferFrom('-...'))
 		})
 	})
 
@@ -652,7 +656,7 @@ describe('ciphers', () => {
 			assert.deepEqual(sombra.polybius.encodeToString('j'), '24')
 		})
 		it('maps A as C', async () => {
-			var opts = {charToSkip: 'a', skipAsChar: 'c'}
+			var opts = {charToReplace: 'a', replaceWith: 'c'}
 			assert.deepEqual(sombra.polybius.encodeToString('a', opts), '12')
 			assert.deepEqual(sombra.polybius.encodeToString('b', opts), '11')
 			assert.deepEqual(sombra.polybius.encodeToString('c', opts), '12')
@@ -662,13 +666,39 @@ describe('ciphers', () => {
 
 	createSuite('bifid', [
 		['i',  'i'],
-		//['j',  'i'],
 		['ii', 'gt'],
+		// complex examples
 		['hello', 'fnnvd'],
 		['Avocados are useless.', 'Elaoddql tas dsbzpen.'],
 		// i and j translates as one character
 		// special characters
 		['-.§=´a', '-.§=´a'],
+	], () => {
+		it('maps J as I', async () => {
+			assert.deepEqual(sombra.bifid.encodeToString('i'), 'i')
+			assert.deepEqual(sombra.bifid.encodeToString('j'), 'i')
+			assert.deepEqual(sombra.bifid.encodeToString('iii'), 'git')
+			assert.deepEqual(sombra.bifid.encodeToString('jij'), 'git')
+		})
+		it('maps A as C', async () => {
+			var opts = {charToReplace: 'a', replaceWith: 'c'}
+			assert.deepEqual(sombra.bifid.encodeToString('aba', opts), 'bcc')
+			assert.deepEqual(sombra.bifid.encodeToString('abc', opts), 'bcc')
+			assert.deepEqual(sombra.bifid.encodeToString('cbc', opts), 'bcc')
+		})
+	})
+
+	createSuite('bifid', {charToSkip: 'q'}, [
+		['i', 'i'],
+		['j', 'j'],
+		['ij', 'gu'],
+		// 'q' is not encoded, just copied
+		['q', 'q'],
+		['qqq', 'qqq'],
+		['qyoq', 'qxuq'],
+		// complex examples
+		['hello', 'fmmwj'],
+		['Avocados are useless.', 'Ekanddpk tax dxbzojm.'],
 	])
 
 })

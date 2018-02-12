@@ -29,6 +29,8 @@ export class SombraTransform extends Transform {
 		Object.assign(this, defaultOptions, options)
 		this.encoder = !this.decoder
 		this.decoder = !this.encoder
+		if (this._setup)
+			this._setup(this, this)
 		if (this.encoder && this._encodeSetup)
 			this._encodeSetup(this, this)
 		if (this.decoder && this._decodeSetup)
@@ -81,9 +83,9 @@ export class SombraTransform extends Transform {
 				}
 			}
 		} else {
-			if (this._decodeDigest)
+			if (this.decoder && this._decodeDigest)
 				return this._decodeDigest(this, this)
-			else if (this._encodeDigest)
+			else if (this.encoder && this._encodeDigest)
 				return this._encodeDigest(this, this)
 		}
 	}
@@ -184,6 +186,8 @@ export class SombraTransform extends Transform {
 		options = Object.assign(getDefaultOptions(this, true), options)
 		var proto = this.prototype
 		var state = {}
+		if (proto._setup)
+			proto._setup(options, state)
 		if (proto._encodeSetup)
 			proto._encodeSetup(options, state)
 		var result = proto._encode(data, options, state)
@@ -192,10 +196,11 @@ export class SombraTransform extends Transform {
 		return result
 	}
 	static decodeRaw(data, options) {
-		console.log('decodeRaw', data)
 		options = Object.assign(getDefaultOptions(this, true), options)
 		var proto = this.prototype
 		var state = {}
+		if (proto._setup)
+			proto._setup(options, state)
 		if (proto._decodeSetup)
 			proto._decodeSetup(options, state)
 		var result = proto._decode(data, options, state)
@@ -207,7 +212,6 @@ export class SombraTransform extends Transform {
 	// .convert() .encode() and .decode() only return Buffer.
 
 	static convert(data, options) {
-		console.log('convert', this.enoder, this.decoder)
 		var result = this.convertRaw(data, options)
 		if (typeof result === 'string')
 			return bufferFrom(result)
@@ -220,7 +224,6 @@ export class SombraTransform extends Transform {
 		return result
 	}
 	static decode(data, options) {
-		console.log('decode', data)
 		var result = this.decodeRaw(data, options)
 		if (typeof result === 'string')
 			return bufferFrom(result)

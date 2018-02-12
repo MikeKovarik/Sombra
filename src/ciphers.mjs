@@ -263,16 +263,29 @@ export class Morse extends SombraTransform {
 		'-----', '.----', '..---', '...--', '....-', '.....', '-....', '--...', '---..', '----.',
 		// .,?-=:;()/"$\'_@!!+~#&\n
 		'.-.-.-', '--..--', '..--..', '-....-', '-...-', '---...', '-.-.-.', '-.--.', '-.--.-', '-..-.', '.-..-.',
-		'...-..-', '.----.', '..--.-', '.--.-.', '---.', '-.-.--', '.-.-.', '.-...', '...-.-', '.-...', '.-.-..',
+		'...-..-', '.----.', '..--.-', '.--.-.', '---.', '-.-.--', '.-.-.', '--.--', '...-.-', '.-...', '.-.-..',
 		// äáåéñöü
 		'.-.-', '.--.-', '.--.-', '..-..', '--.--', '---.', '..--',
 	]
 
 
-	_encode(buffer, options) {
-		var {alphabet, codes, short, long, space, separator, throwErrors} = options
+	_setup(options, state) {
+		var code = options.code
+		if (options.short !== '.')
+			code = code.replace(/\./g, options.short)
+		if (options.long !== '-')
+			code = code.replace(/\-/g, options.long)
+		options.code = code
+		state.isFirstChunk = true
+		state.input = ''
+	}
+
+	_encode(chunk, options, state) {
+		var {alphabet, codes, space, separator, throwErrors} = options
 		// TODO: enable custom long/short characters
-		var string = bufferToString(buffer)
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		var output = chunk
 			.toLowerCase()
 			.split('')
 			.map(char => {
@@ -285,16 +298,22 @@ export class Morse extends SombraTransform {
 			})
 			.filter(char => char && char.length > 0)
 			.join(separator)
-		return bufferFrom(string)
+		if (state.isFirstChunk)
+			state.isFirstChunk = false
+		else
+			return separator + output
+		return output
 	}
 
-	static decode(buffer) {
-		return this.prototype._decode(buffer, ...this.args.map(o => o.default))
+	_decode(chunk, options, state) {
+		if (typeof chunk !== 'string')
+			chunk = bufferToString(chunk)
+		state.input += chunk
 	}
-	_decode(buffer, options) {
-		var {alphabet, codes, short, long, space, separator, throwErrors} = options
-		// TODO: enable custom long/short characters
-		var string = bufferToString(buffer)
+
+	_decodeDigest(options, state) {
+		var {alphabet, codes, space, separator, throwErrors} = options
+		return state.input
 			.split(separator)
 			.map(entity => {
 				if (entity === space)
@@ -305,7 +324,6 @@ export class Morse extends SombraTransform {
 				return alphabet[index]
 			})
 			.join('')
-		return bufferFrom(string)
 	}
 
 }
@@ -319,11 +337,11 @@ export class Polybius extends SombraTransform {
 	static charToReplace = 'j'
 	static replaceWith = 'i'
 
-	// Encoder
-
-	_encodeSetup(options, state) {
+	_setup(options, state) {
 		this._createAlphabet(options, state)
 	}
+
+	// Encoder
 
 	_encode(chunk, options, state) {
 		if (typeof chunk !== 'string')
@@ -346,17 +364,13 @@ export class Polybius extends SombraTransform {
 	
 	// Decoder
 
-	_decodeSetup(options, state) {
-		this._createAlphabet(options, state)
-	}
-
 	_decode(chunk, options, state) {
 		if (typeof chunk !== 'string')
 			chunk = bufferToString(chunk)
 		// Restore last chunk if there was one.
-		if (this.lastChunk) {
-			chunk = this.lastChunk + chunk
-			this.lastChunk = undefined
+		if (state.lastChunk) {
+			chunk = state.lastChunk + chunk
+			state.lastChunk = undefined
 		}
 		var {alphabet} = state
 		var sanitized = this._sanitizeChunk(chunk, options, state)
@@ -373,7 +387,7 @@ export class Polybius extends SombraTransform {
 			}
 			// Prevent handling if we only have one character left (the row/col pair is split).
 			if (i + 1 >= chunk.length) {
-				this.lastChunk = chunk[i]
+				state.lastChunk = chunk[i]
 				continue
 			}
 			row = parseInt(chunk[i])
