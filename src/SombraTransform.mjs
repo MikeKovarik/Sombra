@@ -2,11 +2,16 @@ import {Transform} from './node-builtins.mjs'
 import {bufferFrom, bufferToString, bufferConcat} from './util-buffer.mjs'
 
 
-function getDefaultOptions(Class) {
+function getDefaultOptions(Class, includeUnits) {
 	var obj = {}
 	for (var key in Class)
 		if (typeof Class[key] !== 'function')
 			obj[key] = Class[key]
+	if (includeUnits) {
+		obj.bits = Class.bits
+		obj.chars = Class.chars
+		obj.bytes = Class.bytes
+	}
 	return obj
 }
 
@@ -26,7 +31,7 @@ export class SombraTransform extends Transform {
 		this.decoder = !this.encoder
 		if (this.encoder && this._encodeSetup)
 			this._encodeSetup(this, this)
-		if (this.encoder && this._decodeSetup)
+		if (this.decoder && this._decodeSetup)
 			this._decodeSetup(this, this)
 		// Used to store raw chunks for defalt _update/_digest set of functions in algorithms that are not streamable.
 		// _update and _digest can be overwritten by inheritor in which case _rawChunks is useless because _update will
@@ -113,10 +118,12 @@ export class SombraTransform extends Transform {
 		this._covertedChunks = []
 		var result = bufferConcat(chunks)
 		// Always return buffer unless encoding is specified.
-		if (encoding)
+		var type = typeof result
+		if (encoding && type !== 'string')
 			return bufferToString(result, encoding)
-		else
-			return result
+		else if (!encoding && type === 'string')
+			return bufferFrom(result)
+		return result
 	}
 
 	// Node stream.Transform stream API to enable pipe-ing.
@@ -185,6 +192,7 @@ export class SombraTransform extends Transform {
 		return result
 	}
 	static decodeRaw(data, options) {
+		console.log('decodeRaw', data)
 		options = Object.assign(getDefaultOptions(this, true), options)
 		var proto = this.prototype
 		var state = {}
@@ -199,6 +207,7 @@ export class SombraTransform extends Transform {
 	// .convert() .encode() and .decode() only return Buffer.
 
 	static convert(data, options) {
+		console.log('convert', this.enoder, this.decoder)
 		var result = this.convertRaw(data, options)
 		if (typeof result === 'string')
 			return bufferFrom(result)
@@ -211,6 +220,7 @@ export class SombraTransform extends Transform {
 		return result
 	}
 	static decode(data, options) {
+		console.log('decode', data)
 		var result = this.decodeRaw(data, options)
 		if (typeof result === 'string')
 			return bufferFrom(result)

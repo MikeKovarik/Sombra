@@ -23,24 +23,22 @@ export function iterator() {
 	}
 }
 
-export function createApiShortcut(Class, hasDecoder) {
+export function createApiShortcut(Class, hasDecoder = true) {
 	var {name} = Class
-	if (hasDecoder) {
-		var Encoder = class Encoder extends Class {encoder = true}
-		Object.defineProperty(Encoder, 'name', {value: name + 'Encoder'})
-	} else {
-		var Encoder = Class
-	}
-	var fn = Encoder.convertToString.bind(Encoder)
-	fn.Encoder = Encoder
-	fn.encode = Encoder.convert.bind(Encoder)
-	fn.encodeToString = Encoder.convertToString.bind(Encoder)
-	if (hasDecoder !== false) {
-		class Decoder extends Class {decoder = true}
+	var fn = Class.encodeToString.bind(Class)
+	fn.Encoder = Class
+	fn.encode = Class.encode.bind(Class)
+	fn.encodeToString = Class.encodeToString.bind(Class)
+	//if (hasDecoder !== false) {
+	if (Class.prototype._decode) {
+		class Decoder extends Class {
+			static decoder = true
+			decoder = true
+		}
 		Object.defineProperty(Decoder, 'name', {value: name + 'Decoder'})
 		fn.Decoder = Decoder
-		fn.decode = Decoder.convert.bind(Decoder)
-		fn.decodeToString = Decoder.convertToString.bind(Decoder)
+		fn.decode = Class.decode.bind(Class)
+		fn.decodeToString = Class.decodeToString.bind(Class)
 	}
 	return fn
 }
@@ -68,29 +66,4 @@ export function chain(input, actions, returnBuffer = false, defaultAction = 'enc
 	}
 	return state
 }
-*/
-
-/*
-// Characters usually take one or two bytes, but emoji and other special unicode characters
-// take up to 4 bytes and two characters making it impossible to just iterate over string.
-// This function takes string (of one emoji but realistically multiple characters) and returns charCode.
-function unicodeCharCode(str) {
-	// Strip unicode variation selector and zero-width joiner
-	//str = str.replace(/\ufe0f|\u200d/gm, '')
-	var i = 0
-	var code = 0
-	var lastChunk = 0
-	while (i < str.length) {
-		code = str.charCodeAt(i++)
-		if (lastChunk) {
-			return 65536 + (lastChunk - 55296 << 10) + (code - 56320)
-		} else if (55296 <= code && code <= 56319) {
-			lastChunk = code
-		} else {
-			return code
-		}
-	}
-}
-
-console.log(unicodeCharCode('💀').toString(16))
 */
