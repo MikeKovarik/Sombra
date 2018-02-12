@@ -576,32 +576,38 @@ describe('checksums', () => {
 
 describe('ciphers', () => {
 
-	//describe('vigenere', () => {
-	//	createSuite('vigenere', {
-	// TODO:
-	//	})
-	//})
-/*
-	// TODO: work in progress
-	createSuite('rot13', {
-		['a',     'n'],
-		['hello', 'uryyb'],
+	createSuite('rot5', [
+		['123',        '678'],
+		['123hello',   '678hello'],
+		['2.4;6-8 10', '7.9;1-3 65'],
+	])
+
+	createSuite('rot13', [
+		['a',        'n'],
+		['hello',    'uryyb'],
+		['123hello', '123uryyb'],
 		['Avocados are useless.', 'Nibpnqbf ner hfryrff.'],
-		//7: '', // TODO:
-	})
-	//createSuite('twosComplement', [16], {
-	//	// todo. different key tests
-	//})
-	it('special characters', async () => {
-		assert.deepEqual(sombra.Rot13.encode(bufferFrom('-.§=´')), bufferFrom('-.§=´'))
-	})
-*/
+	])
+
+	createSuite('rot18', [
+		['hello',       'uryyb'],
+		['123hello',    '678uryyb'],
+		['L0s Mu3r7o5', 'Y5f Zh8e2b0'],
+	])
+
 	createSuite('caesar', [
 		['a',     'x'],
 		['hello', 'ebiil'],
 		['Avocados are useless.', 'Xslzxalp xob rpbibpp.'],
 		// special characters
 		['-.§=´a', '-.§=´x'],
+	])
+
+	createSuite('vigenere', {key: 'sombra'}, [
+		['a',            'a'],
+		['aaaaaaaaaaaa', 'sombrasombra'],
+		['hello',        'zsxmf'],
+		['Avocados are useless.', 'Sjadrdgg msv uksxfjs.'],
 	])
 
 	createSuite('atbash', [
@@ -611,13 +617,13 @@ describe('ciphers', () => {
 		// special characters
 		['-.§=´a', '-.§=´z'],
 	])
-/*
-	createSuite('a1z26', {
+
+	createSuite('a1z26', [
 		['a',     '1'],
 		['hello', '8-5-12-12-15'],
 		['Avocados are useless.', '1-22-15-3-1-4-15-19 1-18-5 21-19-5-12-5-19-19.'],
-	})
-*/
+	])
+
 	createSuite('morse', [
 		['a',     '.-'],
 		['hello', '.... . .-.. .-.. ---'],
@@ -670,7 +676,6 @@ describe('ciphers', () => {
 		// complex examples
 		['hello', 'fnnvd'],
 		['Avocados are useless.', 'Elaoddql tas dsbzpen.'],
-		// i and j translates as one character
 		// special characters
 		['-.§=´a', '-.§=´a'],
 	], () => {
