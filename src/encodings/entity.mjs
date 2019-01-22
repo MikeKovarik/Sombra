@@ -1,14 +1,16 @@
-import {bufferFrom, bufferToString, bufferConcat} from './util-buffer.mjs'
-import {fromCodePoint, getCodePoints, getCodeUnits, sanitizeUtf8BufferChunk, codePointToUtf8Sequence} from './util-utf.mjs'
-import {createApiShortcut} from './util.mjs'
-import {SombraTransform} from './SombraTransform.mjs'
-import {ENTITY} from './util-tables.mjs'
+import {bufferFrom, bufferToString, bufferConcat} from '../util/buffer.mjs'
+import {getCodeUnits, sanitizeUtf8BufferChunk, codePointToUtf8Sequence} from '../util/utf.mjs'
+import {createApiShortcut} from '../util/util.mjs'
+import {SombraTransform} from '../SombraTransform.mjs'
+import {ENTITY} from '../util/tables.mjs'
 
 
+// TODO: revisit https://en.wikipedia.org/wiki/Percent-encoding
+/*
 function bufferFromCodePoint(codePoint) {
 	return bufferFrom([codePoint])
 }
-
+*/
 function isHexCharacter(character) {
 	return /[0-9A-Fa-f]/.test(character)
 }
@@ -48,13 +50,13 @@ export class EntityTransform extends SombraTransform {
 
 	// Entity encoder and decoder methods.
 
-	_encode(chunk, options) {
+	_encode(chunk, options, state) {
 		return getCodeUnits(chunk, options.bits)
-			.map(code => this._encodeCharacter(code, options))
+			.map(code => this._encodeCharacter(code, options, state))
 			.join('')
 	}
 	
-	_encodeCharacter(code, options) {
+	_encodeCharacter(code, options, state) {
 		var stringCode = code.toString(options.radix)
 		if (options.uppercase)
 			stringCode = stringCode.toUpperCase()
@@ -251,6 +253,8 @@ export class Unicode extends EntityTransform {
 // </div> => %3C%2F%64%69%76%3E
 // 💀 => %F0%9F%92%80
 // Name URL?
+// https://en.wikipedia.org/wiki/Percent-encoding
+// TODO: revisit and read through wiki
 export class Percent extends EntityTransform {
 	static prefix = '%'
 	static postfix = ''

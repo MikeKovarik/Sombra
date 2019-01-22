@@ -1,7 +1,6 @@
 import {SombraTransform} from './SombraTransform.mjs'
-import {createApiShortcut} from './util.mjs'
-import {bufferAlloc, bufferFrom, bufferToString} from './util-buffer.mjs'
-import {getCodeUnits} from './util-utf.mjs'
+import {createApiShortcut} from './util/util.mjs'
+import {bufferAlloc, bufferFrom, bufferToString} from './util/buffer.mjs'
 
 
 function shiftCharCode(code, key, shiftBy) {

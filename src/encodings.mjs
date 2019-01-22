@@ -1,11 +1,10 @@
-import {SombraTransform} from './SombraTransform.mjs'
-import {Base64} from './encodings-base64.mjs'
-import {Bin, Oct, Dec, Hex} from './encodings-numeric.mjs'
-import {} from './encodings-entity.mjs'
+import {Base64} from './encodings/base64.mjs'
+import {Bin, Oct, Dec, Hex} from './encodings/numeric.mjs'
+import {} from './encodings/entity.mjs'
 
-export * from './encodings-base64.mjs'
-export * from './encodings-numeric.mjs'
-export * from './encodings-entity.mjs'
+export * from './encodings/base64.mjs'
+export * from './encodings/numeric.mjs'
+export * from './encodings/entity.mjs'
 
 
 

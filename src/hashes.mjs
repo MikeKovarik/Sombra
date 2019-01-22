@@ -1,6 +1,7 @@
-﻿import {Transform, bufferFrom} from './node-builtins.mjs'
-import {nodeCrypto, webCrypto, platform, createApiShortcut} from './util.mjs'
-import {SombraTransform} from './SombraTransform.mjs'
+﻿import {Transform} from './util/node-builtins.mjs'
+import {nodeCrypto, webCrypto, platform, createApiShortcut} from './util/util.mjs'
+import {bufferFrom, bufferFromString, bufferToString} from './util/buffer.mjs'
+import {Hex, hex} from './encodings/numeric.mjs'
 
 
 // TODO: extend from SombraTransform so everything works
@@ -35,7 +36,7 @@ export class SombraHash extends Hash {
 }
 
 
-var Sha
+export var Sha
 
 if (platform.node) {
 
@@ -43,6 +44,7 @@ if (platform.node) {
 
 		static async encode(buffer) {
 			// TODO
+			var nameNode = this.name.toLowerCase()
 			return nodeCrypto.createHash(this.nameNode).update(buffer).digest()
 		}
 
@@ -75,7 +77,7 @@ if (platform.node) {
 
 } else {
 
-	const WEBNAMES = {
+	let WEBNAMES = {
 		sha1:   'SHA-1',
 		sha256: 'SHA-256',
 		sha384: 'SHA-384',
@@ -85,8 +87,8 @@ if (platform.node) {
 	Sha = class Sha extends SombraHash {
 
 		static async encode(buffer) {
-			var algorithm = WEBNAMES[this.nameNode]
-			var arrayBuffer = await webCrypto.subtle.digest(algorithm, buffer)
+			var webName = WEBNAMES[this.name.toLowerCase()]
+			var arrayBuffer = await webCrypto.subtle.digest(webName, buffer)
 			return new Uint8Array(arrayBuffer)
 		}
 
@@ -96,32 +98,22 @@ if (platform.node) {
 
 
 export class Sha1 extends Sha {
-	constructor(options) {super('sha1', options)}
-	static nameNode = 'sha1'
 	static size = 160
 }
 
 export class Sha256 extends Sha {
-	constructor(options) {super('sha256', options)}
-	static nameNode = 'sha256'
 	static size = 256
 }
 
 export class Sha384 extends Sha {
-	constructor(options) {super('sha384', options)}
-	static nameNode = 'sha384'
 	static size = 384
 }
 
 export class Sha512 extends Sha {
-	constructor(options) {super('sha512', options)}
-	static nameNode = 'sha512'
 	static size = 512
 }
 
 export class Md5 extends Sha {
-	constructor(options) {super('md5', options)}
-	static nameNode = 'md5'
 	static size = 128
 }
 
@@ -132,7 +124,14 @@ export class Md5 extends Sha {
 //export var sha384 = createApiShortcut(Sha384)
 //export var sha512 = createApiShortcut(Sha512)
 //export var md5    = createApiShortcut(Md5)
-export var sha1   = {}
+// TODO: fixme
+// for now using this
+export var sha1   = async arg => {
+	var buffer = bufferFrom(arg)
+	var encodedBuffer = await Sha1.encode(buffer)
+	return hex(encodedBuffer)
+}
+//export var sha1   = arg => (Sha1.encode(arg))
 export var sha256 = {}
 export var sha384 = {}
 export var sha512 = {}
@@ -152,7 +151,8 @@ function getHashConstructor(name) {
 // node style crypto.createHash('sha256')
 export function createHash(name) {
 	var Class = getHashConstructor(name)
-	return new Class
+	//return new Class
+	return Class
 }
 
 export function hash(data, name, encoding = 'hex') {

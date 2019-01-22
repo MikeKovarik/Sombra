@@ -1,6 +1,6 @@
-import {bufferFromUtf8String, bufferAllocUnsafe, bufferFrom} from './node-builtins.mjs'
-import {platform} from './util.mjs'
-import {SombraTransform} from './SombraTransform.mjs'
+import {bufferFromString, bufferAllocUnsafe, bufferFrom} from '../util/buffer.mjs'
+import {createApiShortcut} from '../util/util.mjs'
+import {SombraTransform} from '../SombraTransform.mjs'
 
 
 function splitIntoChunks(input, chars) {
@@ -17,6 +17,7 @@ export class NumericEncoding extends SombraTransform {
 	// TODO: _transform methods for stream
 	// TODO: turn this into two transform stream classes (one for decoding, second to encoding)
 
+	// TODO
 	static args = [{
 		title: 'Separator',
 		type: 'string',
@@ -24,7 +25,9 @@ export class NumericEncoding extends SombraTransform {
 	}]
 
 	_encode(buffer, separator, radix, chars, prefix, postfix) {
-		radix = radix || this.constructor.radix
+		// TODO: fixme: radix argument receives object instead of number
+		radix = this.constructor.radix
+		//radix = radix || this.constructor.radix
 		chars = chars || this.constructor.chars
 		prefix = prefix || this.prefix
 		var uppercase = uppercase || this.uppercase
@@ -38,7 +41,7 @@ export class NumericEncoding extends SombraTransform {
 			array = array.map(num => prefix + num)
 		if (postfix)
 			array = array.map(num => postfix + num)
-		return bufferFromUtf8String(array.join(separator))
+		return bufferFromString(array.join(separator))
 	}
 
 	static encodeString(buffer, separator = ' ') {
@@ -47,8 +50,11 @@ export class NumericEncoding extends SombraTransform {
 			.join(separator)
 	}
 
+	static encodeToString(...args) {
+		return this.encodeString(...args)
+	}
+
 	static decodeString(string, separator = ' ') {
-		console.log('decodeString', string)
 		var {chars, radix} = this
 		if (separator.length) {
 			// Slower parsing using separator over uncertain strings - chunks might not be zero padded.
@@ -68,38 +74,6 @@ export class NumericEncoding extends SombraTransform {
 
 }
 
-export class Bin extends NumericEncoding {
-	static validate = (string, separator) => string.match(/^[01 ]*$/) // todo
-	static radix = 2
-	static chars = 8
-	// Is always padded, even with spacers.
-	static zeroPadded = true
-}
-
-export class Oct extends NumericEncoding {
-	static validate = (string, separator) => string.match(/^[0-8 ]*$/) // todo
-	static radix = 8
-	static chars = 3
-	// Is always padded, even with spacers.
-	static zeroPadded = true
-}
-
-export class Dec extends NumericEncoding {
-	static validate = (string, separator) => string.match(/^[0-9 ]*$/) // todo
-	static radix = 10
-	static chars = 3
-	// Is not zero padded  in free form (when separators are used).
-	static zeroPadded = false
-}
-
-export class Hex extends NumericEncoding {
-	static validate = (string, separator) => string.match(/^[0-9a-fA-F ]*$/) // todo
-	static radix = 16
-	static chars = 2
-	// Is always padded, even with spacers.
-	static zeroPadded = true
-}
-
 // Custom radix encoding.
 export class Num extends NumericEncoding {
 
@@ -117,6 +91,11 @@ export class Num extends NumericEncoding {
 		default: 2
 	}]
 
+	static validate(string, separator = ' ') {
+		var regex = new RegExp(`^[${this.alphabet}${separator}]*$`, 'g')
+		return string.match(regex) !== null
+	}
+
 	_init(separator, radix, chars) {
 		this.radix = radix
 		this.chars = chars
@@ -125,18 +104,57 @@ export class Num extends NumericEncoding {
 }
 
 
-// Idea of what the encoder/decoder interface should look like
-/*
-var hex = createShortcut(HexEncoder, HexDecoder)
-
-function createShortcut(Encoder, Decoder) {
-	var fn = Encoder.convert.bind(Encoder)
-	fn.Encoder = Encoder
-	fn.encode = Encoder.convert.bind(Encoder)
-	if (Decoder) {
-		fn.Decoder = Decoder
-		fn.decode = Encoder.convert.bind(Encoder)
-	}
-	return fn
+export class Bin extends NumericEncoding {
+	static alphabet = '01'
+	static radix = 2
+	static chars = 8
+	// Is always padded, even with spacers.
+	static zeroPadded = true
 }
-*/
+
+export class Oct extends NumericEncoding {
+	static alphabet = '01234567'
+	static radix = 8
+	static chars = 3
+	// Is always padded, even with spacers.
+	static zeroPadded = true
+}
+
+export class Dec extends NumericEncoding {
+	static alphabet = '0123456789'
+	static radix = 10
+	static chars = 3
+	// Is not zero padded  in free form (when separators are used).
+	static zeroPadded = false
+}
+
+export class Hex extends NumericEncoding {
+	static alphabet = '0123456789ABCDEFabcdef'
+	static radix = 16
+	static chars = 2
+	static canBeZeroPadded = true
+	static canHaveSeparator = true
+	// Is always padded, even with spacers.
+	static zeroPadded = true
+}
+
+export var num = createApiShortcut(NumericEncoding)
+export var bin = createApiShortcut(Bin)
+export var oct = createApiShortcut(Oct)
+export var dec = createApiShortcut(Dec)
+// TODO: fixme
+//export var hex = createApiShortcut(Hex)
+export var hex = (arg, separator = '') => {
+	//console.log('hex()')
+	var buffer = bufferFrom(arg)
+	//console.log('#', arg.length, buffer.length)
+	/*
+	if (arg.length !== buffer.length) {
+		console.log('-----------------------------------------')
+		console.log('arg', arg)
+		console.log('buffer', buffer)
+		console.log('-----------------------------------------')
+	}
+	*/
+	return Hex.encodeToString(buffer, separator)
+}

@@ -1,5 +1,6 @@
 import {Transform, Buffer} from './node-builtins.mjs'
-import {escapeUtf8, unescapeUtf8, encodeUtf8String, bufferToCharCodes} from './util-utf.mjs'
+import {escapeUtf8, unescapeUtf8, encodeUtf8String, bufferToCharCodes} from './utf.mjs'
+//import {encodeUtf16String, decodeUtf16String} from './util/utf.mjs'
 
 
 // Custom functions that map to Buffer.alloc(), Bufer.from(), buffer.toString() if Buffer class is present,
@@ -13,7 +14,6 @@ export var bufferToString
 // Also exporting internal methods used for shimming Buffer.from() and buffer.toString().
 // Sombra's encoding classes Utf8, Hex and Base64 would normally contain following shims, but it has been moved
 // here to form a coherent shim of Buffer class (due to class hoisting and circular dependencies).
-export var bufferFromString
 export var bufferFromUtf16String
 export var bufferFromHexString
 export var bufferFromBase64String
@@ -24,10 +24,10 @@ export var bufferToBase64String
 // Wrapper or shims (where necessary) of Buffer methods
 if (Buffer) {
 
-	bufferAlloc       = Buffer.alloc
-	bufferAllocUnsafe = Buffer.allocUnsafe
-	bufferFrom        = Buffer.from
-	bufferConcat      = Buffer.concat
+	bufferAlloc       = Buffer.alloc.bind(Buffer)
+	bufferAllocUnsafe = Buffer.allocUnsafe.bind(Buffer)
+	bufferFrom        = Buffer.from.bind(Buffer)
+	bufferConcat      = Buffer.concat.bind(Buffer)
 	bufferToString    = (buffer, encoding) => buffer.toString(encoding)
 
 	bufferFromUtf16String  = data => Buffer.from(data, 'utf8')
@@ -50,7 +50,6 @@ if (Buffer) {
 		var buffer = buffers.shift()
 		var cursor = buffer.length
 		output.set(buffer)
-		var currentbuffer
 		while (buffers.length) {
 			buffer = buffers.shift()
 			output.set(buffer, cursor)
@@ -68,6 +67,8 @@ if (Buffer) {
 		bufferToUtf16String   = buffer => decoder.decode(buffer)
 	} else {
 		// Shim for encoding UTF16 string into UTF8 buffer or vice versa.
+		//bufferFromUtf16String = encodeUtf16String
+		//bufferToUtf16String   = decodeUtf16String
 		bufferFromUtf16String = string => encodeUtf8String(escapeUtf8(string))
 		bufferToUtf16String   = buffer => unescapeUtf8(bufferToCharCodes(buffer))
 	}
@@ -96,9 +97,11 @@ if (Buffer) {
 
 	// Shim of Buffer.from(data, encoding)
 	bufferFrom = (data, encoding = 'utf8') => {
-		if (Array.isArray(data) || data instanceof Uint8Array || data instanceof ArrayBuffer) {
+		if (Array.isArray(data) || isUintArray(data) || isArrayBuffer(data)) {
+			console.log('IS ARRAY LIKE')
 			return new Uint8Array(data)
 		} else {
+			console.log('NOT ARRAY LIKE!!!!!!!!!!!', data)
 			switch (encoding) {
 				case 'hex':    return bufferFromHexString(data)
 				case 'utf8':   return bufferFromUtf16String(data)
@@ -115,8 +118,19 @@ if (Buffer) {
 		}
 	}
 
+	function isUintArray(data) {
+		return data instanceof Uint8Array
+			|| data instanceof Uint16Array
+	}
+
+	function isArrayBuffer(data) {
+		return data instanceof ArrayBuffer
+	}
+
 }
 
+
+export var bufferFromString = bufferFromUtf16String
 
 // OTHER BUFFER UTILITIES
 

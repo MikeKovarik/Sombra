@@ -44,6 +44,15 @@ export function createApiShortcut(Class, hasDecoder = true) {
 }
 
 
+// Unicode normalization to decompose speciaů characters.
+//string = 'áàâäãéèëêíìïîóòöôõúùüûñçăşţ'
+export function removeDiacritics(string) {
+	return string
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '') // removes exotic 
+		//.replace(/[^\w]/g, '')
+}
+
 /*
 export function chain(input, actions, returnBuffer = false, defaultAction = 'encode') {
 	var state = input

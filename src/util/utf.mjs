@@ -121,8 +121,8 @@ export function codePointToSurrogatePair(codePoint) {
 // 'ř'  => [197, 153]
 // 'a'  => [97]
 export function encodeUtf8String(string) {
-	var buffer = new Uint8Array(string.length)
-	return getCharCodes(string, buffer)
+	var array = getCodeUnitsFromString(string)
+	return new Uint8Array(array)
 }
 
 // Returns typed array of 16b unit codes
@@ -131,71 +131,88 @@ export function encodeUtf8String(string) {
 // 'a'  => [97]
 export function encodeUtf16String(string) {
 	var buffer = new Uint16Array(string.length)
-	return getCharCodes(string, buffer)
+	return getCharCodesFromString(string, buffer)
 }
+
 
 // Returns typed array of 32b code points
 // '💀' => [128128]
 // 'ř'  => [348]
 // 'a'  => [97]
 export function encodeUtf32String(string) {
-	var array = getCodePoints(string)
+	var array = getCodePointsFromString(string)
 	return new Uint32Array(array)
 }
 
 
+// TODO: find more fitting name
 export function getCodeUnits(chunk, bits = 8) {
-	if (bits === 32) {
-		return getCodePoints(chunk)
-	} else {
-		if (typeof chunk === 'string') {
-			if (bits === 8)
-				chunk = escapeUtf8(chunk)
-			return getCharCodes(chunk)
-		} else {
-			if (bits === 8) {
-				return Array.from(chunk)
-			} else {
-				var codeUnits = []
-				var codePoints = getCodePointsFromUtf8Buffer(chunk)
-				for (var i = 0; i < codePoints.length; i++) {
-					var codePoint = codePoints[i]
-					if (isUtf16Surrogate(codePoint))
-						codeUnits.push(...codePointToSurrogatePair(codePoint))
-					else
-						codeUnits.push(codePoint)
-				}
-				return codeUnits
-			}
-		}
+	switch (bits) {
+		case 8: return _getCodeUnits(chunk)
+		case 16: return getCharCodes(chunk)
+		case 32: return getCodePoints(chunk)
 	}
 }
 
-export function getCharCodes(string, buffer = []) {
-	for (var i = 0; i < string.length; i++)
-		buffer[i] = string.charCodeAt(i)
-	return buffer
-}
 
-export function getCodePoints(chunk, outputBuffer) {
+// TODO: rename, remove slash
+export function _getCodeUnits(chunk) {
 	if (typeof chunk === 'string')
-		return getCodePointsFromString(chunk, outputBuffer)
+		return getCodeUnitsFromString(string)
 	else
-		return getCodePointsFromUtf8Buffer(chunk, outputBuffer)
+		return getCodeUnitsFromUtf8Buffer(buffer)
 }
 
-export function getCodePointsFromString(string, outputBuffer = []) {
-	var code
-	for (var i = 0; i < string.length; i++) {
-		code = string.codePointAt(i)
-		if (isUtf16Surrogate(code))
-			i++
-		outputBuffer.push(code)
+export function getCodeUnitsFromString(string) {
+	string = escapeUtf8(string)
+	return getCharCodesFromString(string)
+}
+
+export function getCodeUnitsFromUtf8Buffer(buffer) {
+	return Array.from(buffer)
+}
+
+
+export function getCharCodes(string, output = []) {
+	if (typeof chunk === 'string')
+		return getCharCodesFromString(chunk, output)
+	else
+		return getCharCodesFromUtf8Buffer(chunk, output)
+}
+
+export function getCharCodesFromString(string, output = []) {
+	for (var i = 0; i < string.length; i++)
+		output[i] = string.charCodeAt(i)
+	return output
+}
+
+export function getCharCodesFromUtf8Buffer(buffer, output = []) {
+	var codePoints = getCodePointsFromUtf8Buffer(buffer)
+	for (var i = 0; i < codePoints.length; i++) {
+		var codePoint = codePoints[i]
+		if (isUtf16Surrogate(codePoint))
+			output.push(...codePointToSurrogatePair(codePoint))
+		else
+			output.push(codePoint)
 	}
-	return outputBuffer
+	return output
 }
 
-export function getCodePointsFromUtf8Buffer(buffer, outputBuffer) {
+
+export function getCodePoints(chunk) {
+	if (typeof chunk === 'string')
+		return getCodePointsFromString(chunk)
+	else
+		return getCodePointsFromUtf8Buffer(chunk)
+}
+
+export function getCodePointsFromString(string) {
+	// Can't just iterate over string.length because emoji characters have length of 2 or 3
+	// charCodes and string.length returns length of char codes. Array.from handles 32b code units.
+	return Array.from(string).map(char => char.codePointAt(0))
+}
+
+export function getCodePointsFromUtf8Buffer(buffer) {
 	var codeUnit
 	var seqBytesLeft = 0
 	var seqCodePoint = 0

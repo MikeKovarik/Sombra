@@ -1,5 +1,5 @@
-import {Transform} from './node-builtins.mjs'
-import {bufferFrom, bufferToString, bufferConcat} from './util-buffer.mjs'
+import {Transform} from './util/node-builtins.mjs'
+import {bufferFrom, bufferToString, bufferConcat} from './util/buffer.mjs'
 
 
 function getDefaultOptions(Class, includeUnits) {

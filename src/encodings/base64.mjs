@@ -1,29 +1,30 @@
-import {bufferFromUtf8String, bufferToUtf8String, bufferFromBase64String} from './node-builtins.mjs'
-import {escapeUtf8, unescapeUtf8, bufferToUtf8EscapedString} from './node-builtins.mjs'
-import {bufferFrom} from './node-builtins.mjs'
-import {platform, createApiShortcut} from './util.mjs'
-import {SombraTransform} from './SombraTransform.mjs'
+import {bufferFromUtf16String, bufferToUtf16String, bufferFromBase64String} from '../util/buffer.mjs'
+import {escapeUtf8, unescapeUtf8, bufferToCharCodes} from '../util/utf.mjs'
+import {platform, createApiShortcut} from '../util/util.mjs'
+import {SombraTransform} from '../SombraTransform.mjs'
 
 
 export class Base64 extends SombraTransform {
 
+	static alphabet    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+	static alphabetRaw = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 	static validate = string => string.match(/^[A-Za-z0-9+/=]*$/) === null
 
 	// Converts buffer into buffer representation of the base64 string.
 	// To get the actual string it has go through Utf8 encoder, or Base64.toString should be used.
-	// This is because of piping
+	// This is because osf piping
 	// e.g. Buffer.from('ff', 'hex') => Buffer.from('/w==', 'utf8')
 	//      <Buffer ff>              => <Buffer 2f 77 3d 3d>
 	_encode(chunk) {
 		if (platform.node) {
 			if (typeof chunk === 'string')
-				chunk = bufferFromUtf8String(chunk)
+				chunk = bufferFromUtf16String(chunk)
 			return chunk.toString('base64')
 		} else {
 			if (typeof chunk === 'string')
 				return btoa(escapeUtf8(chunk))
 			else
-				return btoa(bufferToUtf8EscapedString(chunk))
+				return btoa(bufferToCharCodes(chunk))
 		}
 	}
 
@@ -31,13 +32,13 @@ export class Base64 extends SombraTransform {
 	_decode(chunk) {
 		if (platform.node) {
 			if (typeof chunk !== 'string')
-				chunk = bufferToUtf8String(chunk)
+				chunk = bufferToUtf16String(chunk)
 			return bufferFromBase64String(chunk)
 		} else {
 			if (typeof chunk === 'string')
 				return unescapeUtf8(atob(chunk))
 			else
-				return unescapeUtf8(atob(bufferToUtf8EscapedString(chunk)))
+				return unescapeUtf8(atob(bufferToCharCodes(chunk)))
 		}
 	}
 
@@ -69,6 +70,9 @@ export class Base64 extends SombraTransform {
 	}
 
 }
+
+
+// TODO: variants: base16, base32, base36, base58 (modified alphabet), ascii85/base85
 
 
 export var base64 = createApiShortcut(Base64)
