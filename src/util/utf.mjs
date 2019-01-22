@@ -181,6 +181,7 @@ export function getCharCodes(string, output = []) {
 }
 
 export function getCharCodesFromString(string, output = []) {
+	output.length = string.length
 	for (var i = 0; i < string.length; i++)
 		output[i] = string.charCodeAt(i)
 	return output

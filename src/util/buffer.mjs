@@ -1,5 +1,5 @@
 import {Transform, Buffer} from './node-builtins.mjs'
-import {escapeUtf8, unescapeUtf8, encodeUtf8String, bufferToCharCodes} from './utf.mjs'
+import {escapeUtf8, unescapeUtf8, encodeUtf8String, bufferToCharCodes, getCharCodesFromString} from './utf.mjs'
 //import {encodeUtf16String, decodeUtf16String} from './util/utf.mjs'
 
 
@@ -74,10 +74,14 @@ if (Buffer) {
 	}
 
 	// BASE64
-	// String needs to be escaped to UTF8 befor btoa() or after atob().
+	// NOTE: Cannot use encodeUtf8String().
+	//       encodeUtf8String() inside does escaping to UTF8 which is not wanted.
+	//       because result of atob() is raw binary data in a string format,
+	//       not a string that needs to be escaped.
+	bufferFromBase64String = string => new Uint8Array(getCharCodesFromString((atob(string))))
+	// String needs to be escaped to UTF8 before btoa() or after atob().
 	// NOTE: btoa('č') throws error but 'č' encodes as 'Ä' or [196, 141]
 	//       which can be btoa'd.
-	bufferFromBase64String = string => encodeUtf8String(atob(string))
 	bufferToBase64String   = buffer => btoa(bufferToCharCodes(buffer))
 
 	// HEX
@@ -98,10 +102,8 @@ if (Buffer) {
 	// Shim of Buffer.from(data, encoding)
 	bufferFrom = (data, encoding = 'utf8') => {
 		if (Array.isArray(data) || isUintArray(data) || isArrayBuffer(data)) {
-			console.log('IS ARRAY LIKE')
 			return new Uint8Array(data)
 		} else {
-			console.log('NOT ARRAY LIKE!!!!!!!!!!!', data)
 			switch (encoding) {
 				case 'hex':    return bufferFromHexString(data)
 				case 'utf8':   return bufferFromUtf16String(data)
