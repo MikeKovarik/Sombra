@@ -1,0 +1,49 @@
+import './testcore.js'
+var {bufferFrom, bufferToString, bufferConcat} = sombra
+
+
+describe('hashes', () => {
+
+	createSuite('sha1', [
+		['',      'da39a3ee5e6b4b0d3255bfef95601890afd80709'],
+		[[0x00],  '5ba93c9db0cff93f52b521d7420e43f6eda2784f'],
+		[[0xff],  '85e53271e14006f0265921d02d4d736cdc580b0b'],
+		['hello', 'aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d'],
+		['Avocados are useless.', 'b37401be9ace578c44a0a5f10412d014d737c49d'],
+	])
+
+	createSuite('sha256', [
+		['',      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'],
+		[[0x00],  '6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d'],
+		[[0xff],  'a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89'],
+		['hello', '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'],
+		['Avocados are useless.', '732a278662fe4fe57913fe31554ba62350301c435ca899f3bf74a848271c341a'],
+	])
+
+	createSuite('sha384', [
+		['',      '38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b'],
+		[[0x00],  'bec021b4f368e3069134e012c2b4307083d3a9bdd206e24e5f0d86e13d6636655933ec2b413465966817a9c208a11717'],
+		[[0xff],  '43950796d9883503655e35b5190aee687a2dd99f265012625b95753978e4efff3e8414d178a6e2318480d8eb6ddee643'],
+		['hello', '59e1748777448c69de6b800d7a33bbfb9ff1b463e44354c3553bcdb9c666fa90125a3c79f90397bdf5f6a13de828684f'],
+		['Avocados are useless.', '8f5ffb1d816e9306f7bb2a0203d02a3d1da0bb1052f95980078fb8d1724ef1c9c622d88c6fb24afc4ccabae74b78673c'],
+	])
+
+	createSuite('sha512', [
+		['',      'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e'],
+		[[0x00],  'b8244d028981d693af7b456af8efa4cad63d282e19ff14942c246e50d9351d22704a802a71c3580b6370de4ceb293c324a8423342557d4e5c38438f0e36910ee'],
+		[[0xff],  '6700df6600b118ab0432715a7e8a68b0bf37cdf4adaf0fb9e2b3ebe04ad19c7032cbad55e932792af360bafaa09962e2e690652bc075b2dad0c30688ba2f31a3'],
+		['hello', '9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043'],
+		['Avocados are useless.', '889c8b016febf78e66ee669f8bea7a485b2737c6bfa790ea764f8635977bb1065bf6f0b81a5d8d71ab71d07f1b3cc9b4c15fa849b203b4dc58dea16ad0747a98'],
+	])
+
+	if (!sombra.webCrypto) {
+		createSuite('md5', [
+			['',      'd41d8cd98f00b204e9800998ecf8427e'],
+			[[0x00],  '93b885adfe0da089cdf634904fd59f71'],
+			[[0xff],  '00594fd4f42ba43fc1ca0427a0576295'],
+			['hello', '5d41402abc4b2a76b9719d911017c592'],
+			['Avocados are useless.', 'cdf495ea6b5355caeb061913f569bd76'],
+		])
+	}
+
+})
