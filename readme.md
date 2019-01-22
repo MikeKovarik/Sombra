@@ -28,9 +28,10 @@ TODO require/import/<script>
 Numerical: Binary, Octal, Decimal, Hexadecimal, Base64, Custom radix
 
 ```js
-sombra.Bin.encode('boop').toString() // 01100010 01101111 01101111 01110000
-sombra.Bin.encode('boop', '.').toString() // 01100010.01101111.01101111.01110000
-sombra.Hex.encode('boop', '-').toString() // 62-6f-6f-70
+sombra.bin.encode('boop').toString() // 01100010 01101111 01101111 01110000
+sombra.bin.encodeToString('boop') // 01100010 01101111 01101111 01110000
+sombra.bin.encodeToString('boop', '-') // 01100010-01101111-01101111-01110000
+sombra.hex.encodeToString('boop', ':') // 62:6f:6f:70
 ```
 
 Entity escapers: NCR (HTML entities), Unicode
@@ -45,8 +46,8 @@ sombra.Unicode.encode('💀').toString('hex') // U+1F480
 Ceasar, clock, atbash, A1-Z26, morse code, and many more in the works or with preliminary implementation.
 
 ```js
-sombra.Caesar.encode('Avocados are useless.').toString() // Xslzxalp xob rpbibpp.
-sombra.Morse.encode('hello').toString() // .... . .-.. .-.. ---
+sombra.caesar.encodeToString('Avocados are useless.') // Xslzxalp xob rpbibpp.
+sombra.morse.encodeToString('hello') // .... . .-.. .-.. ---
 ```
 
 #### Checksums
@@ -54,8 +55,9 @@ sombra.Morse.encode('hello').toString() // .... . .-.. .-.. ---
 CRC-16, CRC-32, xor, 2's complement, sum
 
 ```js
-sombra.Crc32.encode('Avocados are useless.').toString('hex') // 71b3f376
-sombra.TwosComplement.encode('Avocados are useless.').toString('hex') // 26
+sombra.crc32.encode('Avocados are useless.').toString('hex') // 71b3f376
+sombra.crc32.encodeToString('Avocados are useless.') // 71b3f376
+sombra.twosComplement.encodeToString('Avocados are useless.') // 26
 ```
 
 #### Hashing algorithms
@@ -88,11 +90,11 @@ and it also has `.update()`/`.digest()` methods.
 ```js
 myReadStreamFromString('boop')
 	// converts 'boop' to 'yllm'
-	.pipe(new sombra.Caesar)
+	.pipe(new sombra.caesar.Encoder)
 	// converts 'yllm' to '-.-- .-.. .-.. --'
-	.pipe(new sombra.Morse)
+	.pipe(new sombra.morse.Encoder)
 	// hashes '-.-- .-.. .-.. --' to <Buffer eb 5c f0 a3 90 a1 88 98 38 dc ..>
-	.pipe(new sombra.Sha256)
+	.pipe(new sombra.sha256.Encoder)
 	// prints out the buffer as string 'eb5cf0a390a1889838dc1d870ff44aff05d440e9348a8f7308770db56939a551'
 	.pipe(myConsoleWriteStream('hex'))
 ```
@@ -108,9 +110,7 @@ Work in progress. More sugar incoming.
 ## Plans for the future
 
 * Finalizing API that's simple and sugar-coated.
-* Tidying up the code. Some parts are still a bit messy. Having the converters both streamable and also accessible from static methods makes for a messy code.
 * More ciphers - Vigenere, rot13 (and variations), xor, bifid, etc... Some are already in works from before.
-* Streamable Decoder classes. Each class currently is a stream of `.encode()`. Despite having `.decode()` method there's not.
 * CRC variants (modbus, xmodem, kermit, etc...)
 
 - [ ] Vigenere cipher
@@ -121,7 +121,8 @@ Work in progress. More sugar incoming.
 - [ ] Leet speak
 - [ ] BCD encoding
 - [ ] Unicode and NCR encoding
-- [ ] HTML/XML entity escaping
+- [x] HTML/XML entity escaping
+- [ ] url / percentage encoding
 - [x] properly handling and escaping UTF-8 & UTF-16
 
 

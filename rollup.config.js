@@ -1,12 +1,14 @@
 import fs from 'fs'
 import babel from 'rollup-plugin-babel'
+import notify from 'rollup-plugin-notify'
 
 
 var pkg = fs.readFileSync('package.json')
 pkg = JSON.parse(pkg.toString())
 
 var nodeCoreModules = require('repl')._builtinLibs
-var globals = objectFromArray(nodeCoreModules)
+var external = [...nodeCoreModules, ...Object.keys(pkg.dependencies || {})]
+var globals = objectFromArray(external)
 
 export default {
 	treeshake: false,
@@ -14,15 +16,12 @@ export default {
 	output: {
 		file: `index.js`,
 		format: 'umd',
+		name: pkg.name,
+		amd: {id: pkg.name},
+		globals,
 	},
-	name: pkg.name,
-	globals,
-	plugins: [
-		babel({
-			plugins: ['transform-class-properties'],
-			//externalHelpers: true
-		})
-	]
+	external,
+	plugins: [notify(), babel()]
 }
 
 function objectFromArray(arr) {
